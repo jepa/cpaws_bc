@@ -62,6 +62,8 @@ nsb_matching_species <- nsb_species %>%
   filter(scientific_name %in% exploited_species$taxon_name) %>% 
   write_csv(my_path("D","Species",name ="nsb_dbem_matching_spp.csv"))
 
+
+
 ```
 
 
@@ -251,4 +253,202 @@ ggplot() +
 
 
 
+
+```{r}
+
+NSB_species_list_priorities <- read_excel("~/Library/CloudStorage/OneDrive-UBC/Data/cpaws_bc/Data/Species/NSB_species list_priorities.xlsx", 
+                                          sheet = "original list")
+
+dbem_data <- my_data("dbem_species") %>% 
+  # rename(scientific_name = taxon_name) %>% 
+  select(-common_name)
+  
+
+NSB_species_list_priorities %>% 
+  select(1:5) %>% 
+  left_join(dbem_data,
+             by = "genus") %>% 
+  mutate(same_spp = ifelse(scientific_name == taxon_name,"Yes","Sub")) %>% 
+  # View()
+  write_csv("cpaw_dbem.csv")
+
+
+
+
+```
+
+# Species ran
+
+## Load data
+
+```{r}
+
+# Get modelled species DF
+taxon_list <- my_path("D","Species",name ="nsb_dbem_matching_spp.csv", read = T) %>%
+  select(taxon_name = scientific_name) %>% 
+  left_join(my_data("dbem_species"))
+
+
+# Get MPA sf
+suppressMessages(
+  bs_sf <- st_read(my_path("D","Spatial/draft_mpan","DRAFT_MAP_NETWORK_NAP_P3_IOAC_Sept2022.shp")) %>% 
+    # Remove the Z component for ease computation
+    st_zm(drop = TRUE)
+) 
+st_crs(bs_sf)$epsg
+crs <- st_crs(bs_sf)
+
+bs_sf <- st_transform(bs_sf,4326)
+
+# Get EEZ
+
+bc_eez <- my_sf("SAU") %>% 
+  filter(eezid == 925)
+
+```
+
+## Plot maps per species
+
+
+```{r}
+
+# Get DBEM paths
+dbem_data <- my_path("G",
+          extra_path = "dbem/dbem_cmip6/r_data/C6GFDL85F1_t2", #SSP585 for now
+          list_files = "paths"
+  )
+
+# Filter out paths from speceis that we are interested in
+cpaw_paths <- dbem_data[grep(paste(taxon_list$taxon_key, collapse = "|"), dbem_data)]
+
+test <- dbem_data[grep(paste(601732, collapse = "|"), dbem_data)]
+
+
+
+# main fx
+
+main_fx <- function(paths){
+
+   # Wrap the entire function in a tryCatch block
+  result <- tryCatch({
+  load(paths)  
+  
+  # Load Abd or MCP data
+  
+  if(exists("sppabdfnl") == T){
+    data <- as.data.frame(sppabdfnl)
+    colnames(data) <- seq(1951,2100,1)
+    rm(sppabdfnl)
+    variable <- "abd"
+  }else{
+    data <- as.data.frame(sppMCPfnl)
+    colnames(data) <- seq(1951,2100,1)
+    rm(sppMCPfnl)
+    variable <- "mcp"
+  }
+  
+  # Get information
+  info <- taxon_list %>% 
+    filter(taxon_key %in% str_sub(paths,92,97)) 
+  print(info)
+  title <- unique(paste0("Percentage Change"," (",variable,") for ",info$common_name," (",info$taxon_name,")"))
+  
+  # Make data plot
+  bc_data <-
+    data %>%
+    # Select years to analyze
+    select(`1995`:`2014`,`2040`:`2059`,`2081`:`2100`) %>% 
+    # filter BC
+    bind_cols(
+      my_data("dbem_coords")
+    ) %>% 
+    right_join(
+      my_data("sau_index") %>% filter(eez_name == "Canada (Pacific)"),
+      by ="index"
+    ) %>% 
+    # test run
+    # ggplot() +
+    # geom_tile(
+    #   aes(
+    #     x = lon,
+    #     y = lat,
+    #     fill = `2050`
+    #   )
+    # )
+    # Wrangling data
+    gather("year","value",`1995`:`2100`) %>% 
+    select(-eez_name,-eez_id,-index) %>% 
+    # Determine time periods
+    mutate(
+      time_period = ifelse(year <= 2014, "2014_hist",
+                           ifelse(year >= 2040 & year <= 2059, "2050_mid","2100_end")
+      )
+    ) %>% 
+    # Average decades for natural variabliity 
+    group_by(time_period,lon,lat) %>% 
+    summarise(mean_nat = mean(value, na.rm = T),
+              .groups = "keep") %>% 
+    spread(time_period,mean_nat) %>% 
+    ungroup() %>% 
+    mutate(per_chng_2050_mid = per_cng_fx(`2014_hist`,`2050_mid`,limit = 100),
+           per_chng_2100_end = per_cng_fx(`2014_hist`,`2100_end`,limit = 100)
+    ) %>% 
+    select(lon,lat,per_chng_2050_mid,per_chng_2100_end) %>% 
+    gather("period","change",per_chng_2050_mid,per_chng_2100_end) %>% 
+    ggplot() +
+    geom_tile(
+      aes(
+        x = lon,
+        y = lat,
+        fill = change,
+        color = change
+      )
+    ) +
+    scale_fill_gradient2("Change (%)",na.value = "white") +
+    scale_color_gradient2("Change (%)", na.value = "white") +
+    # extra maps
+    geom_sf(data = bs_sf, aes(), color = "black", fill = "transparent") +
+    geom_sf(data = bc_eez, aes(), color = "grey50", fill = "transparent") +
+    MyFunctions::my_land_map() +
+    labs(
+      x = "Longitude",
+      y = "Latitude"
+    ) +
+    coord_sf(
+      xlim = c(-120,-140),
+      ylim = c(46,56)
+    ) +
+    theme_classic()+
+    ggtitle(title)+
+    facet_wrap(~period, ncol = 2)
+  
+  # plot_name <- unique(paste0("../Results/Figures/changes/",taxon$common_name,".png"))
+  
+  plot_name <- my_path("R",extra_path = "per_change",paste0(unique(info$common_name),"_",variable,".png")) 
+  
+  ggsave(plot = bc_data,
+         filename = str_to_lower(gsub(" ","_",plot_name)),
+         height = 4,
+         width = 8)
+   
+  # Return a success message or result if needed
+    return("Function completed successfully.")
+    
+  }, error = function(e) {
+    # Error handling
+    message("Error occurred in main_fx:", e$message)
+    # Return a message or value to indicate failure
+    return("Function encountered an error but continued execution.")
+  })
+  
+}
+
+
+# Run function
+# main_fx(cpaw_paths[1]) #single
+
+lapply(cpaw_paths, main_fx) # Multiple
+
+
+```
 

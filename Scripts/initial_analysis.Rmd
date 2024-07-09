@@ -1,0 +1,222 @@
+
+```{r setup, message = F, eval = T, echo = F}
+library(MyFunctions)
+
+my_lib(
+  c(
+    "tidyverse",
+    "sf",
+    "st",
+    "janitor",
+    # For grid estimation 
+    "spatialEco", "geosphere","raster","units","matrixStats","rmapshaper", "igraph"
+  )
+)
+
+# Fix new updates of sf package
+sf::sf_use_s2(use_s2 = FALSE)
+
+select <- dplyr::select
+```
+
+
+# Pre-Analysis
+
+# NOTES TO DISCUSS
+
+- Observation, this shapefile has three dimensions, I am guessing there are some areas that are only bottom and this is why?
+- Removed the depth component
+
+There are (at least) three ways to reallocate fishing effort as it is in the DBEM. We are using area as follows"
+
+- *Based on area*: To reallocate fishing from protected, we take the area protected/total area of grid cells that contain a protected area and reallocate that protected area proportion to the surrounding cells. This is the most accurate and least conservative (i.e least amount of fishing)
+  
+  (area covered by mpa*protection level/total area of grid cells that contain a protected area)/n surrounding grid cells + 1 (or 1.5)
+
+
+
+## Grid shapefiles
+
+### Shapefile Data
+
+
+```{r mpan_shape, eval = T, echo = T, message = F}
+
+mpan_sf <- st_read(my_path("D","Spatial/draft_mpan","DRAFT_MAP_NETWORK_NAP_P3_IOAC_Sept2022.shp")) %>% 
+  # Remove the Z component for ease computation
+  st_zm(drop = TRUE)
+
+#get out coordinate reference system information 
+st_crs(mpan_sf)
+st_crs(mpan_sf)$epsg
+crs <- st_crs(mpan_sf)
+
+mpan_sf_2d <- ggplot(mpan_sf) +
+  geom_sf(aes(fill = as.character(UID_1))) +
+  theme(legend.position = "")
+
+# ggsave(filename = "../Results/Figures/shapefile_2d.png",mpan_sf_2d)
+print(mpan_sf_2d)
+```
+
+
+
+# Grid shapefile
+
+## Identify grids that are MPAs or surrounding an MPA
+
+## 1.1 Load in grid data
+
+```{r grid, eval = T, echo = F}
+
+grid <- read_sf(my_path("D","Spatial/worldsq_ea/", name ="worldsq_EA.shp"))
+
+grid <- grid %>% filter(Lat > 48 & Lat < 56 & Lon > -136 & Lon < -120)
+
+grid <- st_transform(grid, crs = st_crs(crs)) %>% 
+  filter(PWater > 0)
+
+ggplot(grid) +
+  geom_sf()
+```
+
+## 1.2 Identify grids that are MPAs
+
+In this step we identify which grid cells have an MPA completely or partially covering it. 
+
+```{r mpa_overla, eval = T, echo = F}
+
+# Intersect the grid and the MPA shapefile
+grid_intersection <- st_intersection(grid, mpan_sf) %>%
+  group_by(Seq) %>%
+  summarise(geom = st_union(geometry)) %>%
+  mutate(geom = st_sfc(geom),
+         area = st_area(geom)) %>% 
+  mutate(status = "protected") %>% 
+  as.data.frame()
+
+# Identify grid cells that have some level of MPA within them 
+grid2 <- as.data.frame(grid) %>% 
+  left_join(grid_intersection, by = "Seq") %>% 
+  mutate(protected_area_m2 = as.numeric(area)) %>% 
+  select(-geom) %>% 
+  st_as_sf()
+
+# Plot it
+ggplot() + 
+  geom_sf(data = grid2, 
+          aes(fill = protected_area_m2)) +
+  geom_sf(data = mpan_sf, 
+          aes(), fill = NA, color = "white") +
+  scale_fill_viridis_b()
+
+
+```
+
+## 1.3 Estimate area
+
+Here we estimate the proportion (*prop*) of the grid cell that is protected using the area protected ($area_p$) relative to the area of the grid cell ($area_g$):
+
+$prop = \frac{area_p}{area_g}$
+
+```{r area_est, eval = T, echo = T}
+
+grid2 <- grid2 %>% 
+  mutate(grid_area = st_area(.)) %>%
+  drop_units() %>% 
+  mutate(
+    prop = ifelse(status == "protected", (protected_area_m2/grid_area), 1)
+  ) 
+
+
+  ggplot() +
+    geom_sf(data = grid2, aes(fill = prop)) +
+    scale_fill_viridis_b("Proportion of grid\nprotected")
+```
+
+## 1.5 Find surrounding grid cells 
+
+Surrounding grid cells are limited to the grid cells immediately adjacent to a grid cell that is cover (complete or partially) by an MPA. The identification of surrounding grid cells is necessary to further re-allocate fishing effort to these cells as they benefit from the biomass spillover.
+
+
+```{r surroundig, eval = T, echo =T}
+
+grid_mpan <- grid2 %>% 
+  select(OBJECTID, Seq, Lat, Lon, geometry, status, protected_area_m2, grid_area)
+
+# Identify non-protected
+grid_mpan_no <- grid_mpan %>% filter(is.na(status))
+
+#create buffer
+buffer <- st_buffer(grid_mpan %>% filter(status == "protected"), 25000)
+
+intr <- st_intersection(grid_mpan_no, buffer)
+intr_seqs <- c(intr$Seq)
+
+grid_surround <- grid_mpan_no %>% 
+  filter(Seq %in% intr_seqs) %>% 
+  mutate(surrounding ="surrounding") %>% 
+  select(Seq, surrounding)
+
+
+ggplot() +
+  geom_sf(data = grid_surround , aes(), fill = "blue") +
+  geom_sf(data = grid_mpan %>% filter(status == "protected"), aes(), fill = "red") +
+  geom_sf(data = mpan_sf, aes(), fill = NA, color = "black") +
+  ggtitle("Showing protected grid cells in red and surrounding in blue")
+
+```
+
+
+# Reallocate fishing effort
+
+Here we re-allocate fishing effort from the protected grid cells to those surrounding. We do this proportionally to the protected area and the number of surrounding grid cells. Right now, the proportion is accounted from all MPAs and re-distributed to all grid cells, but this can change. For this we first estimate the proportion to be allocated (*PropAllocate*):
+
+
+$$PropAllocate = \frac{tot_{mpa}}{tot_{area}}$$
+
+where $tot_{mpa}$ is the sum of the protected area ($m^2$) of all protected grid cells and $tot_{area}$ is the sum of the whole grided area (protected and surrounding). Then, we estimate the allocation of effort by first counting the number of surrounding grid cells and then allocating the proportion to the fishing effort of surrounding cells ($FE_{sur}$):
+
+$$FE_{sur} = 1+\frac{PropAllocate}{n_{surround}}$$
+
+
+```{r fiseffort, eval = T, echo = F}
+
+#total proportion 
+#this will help allocate fishing effort to the surrounding areas. 
+tot_area = sum(grid_mpan$grid_area, na.rm = T)
+tot_mpa = sum(grid_mpan$protected_area_m2, na.rm = T)
+prop = tot_mpa/tot_area
+
+
+grid_use <- left_join(grid2, grid_surround %>% st_drop_geometry(), by = "Seq")
+
+grid_sc1 <- grid_use %>% 
+  mutate(prop = if_else(status %in% "protected", 1-prop, prop)) #these should all be 0
+
+#grid cells surrounding mpas
+n_surround <- grid_sc1 %>% 
+  st_drop_geometry() %>% 
+  filter(surrounding == "surrounding") %>% 
+  tally()
+
+#protected proportion to reallocate (calculated as area of each mpa/area of grid cells containing mpa)
+prop_allocate = tot_mpa/tot_area
+
+#allocate surrounding cells
+grid_sc1 <- grid_sc1 %>%  
+  mutate(prop = if_else(surrounding %in% "surrounding",(prop_allocate/n_surround$n) +1 , prop),
+         status = ifelse(surrounding %in% "surrounding","surrounding",status),
+         status = ifelse(is.na(status),"unprotected",status)
+         )
+
+ggplot() +
+  geom_sf(data = subset(grid_sc1, grid_sc1$prop != 1),
+          aes(fill = prop)) +
+  geom_sf(data = mpan_sf, aes(), fill = NA, color = "black")
+  
+```
+
+
+
+

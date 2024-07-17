@@ -251,6 +251,50 @@ ggplot() +
   
 ```
 
+## Incorporating grid into DBEM
+
+```{r}
+
+# Get grid from previous steps
+mpa_grid <- as.data.frame(grid_sc1) %>% 
+  ungroup() %>% 
+  select(index = OBJECTID,
+         lon = Lon,
+         lat = Lat,
+         fe_prop = FE_prop)
+
+# Load DBEM grid
+dbem_grid <- my_data("dbem_coords") %>% 
+  filter(!index %in% mpa_grid$index) %>%  #filter out BC
+  bind_rows(mpa_grid) %>% 
+  mutate(fe_prop = ifelse(is.na(fe_prop), 1,fe_prop)) #include fishing proportion
+
+# Map it to make sure it works
+dbem_grid %>% 
+  filter(lat > 40,
+         lon < -100) %>% 
+ggplot() +
+  geom_tile(
+      aes(
+        x = lon,
+        y = lat,
+        fill = log10(fe_prop)
+    )
+  ) +
+  scale_fill_viridis_b()
+
+
+# Prepare it to the DBEM
+dbem_grid_index <- dbem_grid %>% 
+  arrange(index) %>% 
+  select(fe_prop)
+
+# Create index
+name <- my_path("D","spatial","mpa_cpaw.txt")
+write.table(dbem_grid_index, file=name, sep="\t", col.names = F, row.names = F)
+
+
+```
 
 
 
@@ -287,6 +331,16 @@ NSB_species_list_priorities %>%
 taxon_list <- my_path("D","Species",name ="nsb_dbem_matching_spp.csv", read = T) %>%
   select(taxon_name = scientific_name) %>% 
   left_join(my_data("dbem_species"))
+
+
+# Save spp list for DBEM
+CpawSppList <- taxon_list %>% 
+  select(taxon_key)
+
+# Create index
+name_spp_list <- my_path("D","species","CpawSppList10.txt")
+write.table(CpawSppList, file=name_spp_list, sep="\t", col.names = F, row.names = F)
+
 
 
 # Get MPA sf

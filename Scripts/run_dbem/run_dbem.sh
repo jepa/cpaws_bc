@@ -5,7 +5,7 @@
 #SBATCH -N 1	#CPU count
 #SBATCH --mem-per-cpu=700M
 #SBATCH -t 01-00:00:00
-#SBATCH --mail-user=your_email@email.com
+#SBATCH --mail-user=j.palacios@oceans.ubc.ca
 #SBATCH --mail-type=ALL
 #SBATCH --array=10-10
 #SBATCH --output=../slurm_out/Array-%A-%a.out

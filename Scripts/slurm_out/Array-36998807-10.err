@@ -1,0 +1,10 @@
+forrtl: No such file or directory
+forrtl: severe (29): file not found, unit 1, file /project/6006523/jepa/cpaws_bc/Scripts/run_dbem/../../scripts/run_dbem/settings.txt
+Image              PC                Routine            Line        Source             
+DBEM_v2_y          000000000043742C  Unknown               Unknown  Unknown
+DBEM_v2_y          0000000000420340  Unknown               Unknown  Unknown
+DBEM_v2_y          0000000000404442  Unknown               Unknown  Unknown
+DBEM_v2_y          000000000040434D  Unknown               Unknown  Unknown
+libc.so.6          000015463C84E94A  Unknown               Unknown  Unknown
+libc.so.6          000015463C84EA05  __libc_start_main     Unknown  Unknown
+DBEM_v2_y          0000000000404261  Unknown               Unknown  Unknown

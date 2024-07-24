@@ -49,19 +49,32 @@ There are (at least) three ways to reallocate fishing effort as it is in the DBE
 ```{r species_list, eval = F, echo = F}
 
 # NSB species list provided by Colette
-nsb_species <- my_path("D","Species","nsb_species.csv", read = T)
+nsb_species <- my_path("D","Species","updated_species.csv", read = T) 
 
 # DBEM species
 dbem_species <- my_path("Spp",name ="dbem_spp_list.csv", read = T)
 
 # Exploited species
-exploited_species <- my_data("exploited_species") %>% 
-  filter(taxon_key %in% dbem_species$taxon_key)
+# exploited_species <- my_data("exploited_species") %>% 
+  # filter(taxon_key %in% dbem_species$taxon_key)
 
 nsb_matching_species <- nsb_species %>% 
-  filter(scientific_name %in% exploited_species$taxon_name) %>% 
-  write_csv(my_path("D","Species",name ="nsb_dbem_matching_spp.csv"))
+  filter(correct_name %in% dbem_species$worms_name) %>% 
+  left_join(dbem_species %>% select(taxon_key,aphia_id, correct_name = worms_name)) %>% 
+  write_csv(my_path("D","Species",name ="new_nsb_dbem_matching_spp.csv"))
 
+# Update taxon list with new matching data
+
+taxon_list <- my_path("D", "species", "CpawSppList10.txt", read = T, header = F) %>% 
+  rename(taxon_key = v1)
+
+missing_taxa <- nsb_matching_species %>% 
+  filter(!taxon_key %in% taxon_list$taxon_key) %>% 
+  select(taxon_key)
+
+# Create species list for missing taxa
+new_spp_list <- my_path("D","species","CpawSppList11.txt")
+write.table(missing_taxa, file=new_spp_list, sep="\t", col.names = F, row.names = F)
 
 
 ```

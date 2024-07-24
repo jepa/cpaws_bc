@@ -29,5 +29,5 @@ This repository is intended to support the CPAWS project on the BC coast
   - `NSB_species list_priorities.xlsx`, species information for project (CW)
   - `updated_species.csv`, updated taxon name of species according to WORMS (CW)
 
-# Relevant refernces
+# Relevant references
 

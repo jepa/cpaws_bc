@@ -5,7 +5,7 @@
 #SBATCH --ntasks=1                                                              
 #SBATCH --cpus-per-task=1        # number of processes                          
 #SBATCH --mem=4G                                                                
-#SBATCH -t 00-05:00:00                                                         
+#SBATCH -t 00-00:30:00                                                         
 #SBATCH --mail-user=j.palacios@oceans.ubc.ca                                    
 #SBATCH --mail-type=ALL                                                         
 #SBATCH --output=/home/jepa/projects/def-wailung/jepa/cpaws_bc/scripts/slurm_out/con_slurm_%j.out # Specify the full path with the desired file name prefix

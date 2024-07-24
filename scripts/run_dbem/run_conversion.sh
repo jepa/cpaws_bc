@@ -8,7 +8,7 @@
 #SBATCH -t 00-05:00:00                                                         
 #SBATCH --mail-user=j.palacios@oceans.ubc.ca                                    
 #SBATCH --mail-type=ALL                                                         
-#SBATCH --output=/home/jepa/projects/def-wailung/jepa/cpaws_bc/scripts/run_dbem/slurm_out/con_slurm_%j.out # Specify the full path with the desired file name prefix
+#SBATCH --output=/home/jepa/projects/def-wailung/jepa/cpaws_bc/scripts/slurm_out/con_slurm_%j.out # Specify the full path with the desired file name prefix
 
 
 # ---------------------------------------------------------------------         

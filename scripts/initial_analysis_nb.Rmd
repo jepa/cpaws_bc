@@ -1,0 +1,521 @@
+---
+title: CPAWS analysis for British Columbia Marine Protected Network under Climate
+  Change
+author: "Colette Wabnitz, Juliano Palacios Abrantes, William W.L. Cheung"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+```{r setup, message = F, eval = T, echo = F}
+library(MyFunctions)
+
+my_lib(
+  c(
+    "tidyverse",
+    "sf",
+    "st",
+    "janitor",
+    # For grid estimation 
+    "spatialEco", "geosphere","raster","units","matrixStats","rmapshaper", "igraph"
+  )
+)
+
+# Fix new updates of sf package
+sf::sf_use_s2(use_s2 = FALSE)
+
+select <- dplyr::select
+```
+
+
+# Pre-Analysis
+
+# NOTES TO DISCUSS
+
+- Observation, this shapefile has three dimensions, I am guessing there are some areas that are only bottom and this is why?
+- Removed the depth component
+
+There are (at least) three ways to reallocate fishing effort as it is in the DBEM. We are using area as follows"
+
+- *Based on area*: To reallocate fishing from protected, we take the area protected/total area of grid cells that contain a protected area and reallocate that protected area proportion to the surrounding cells. This is the most accurate and least conservative (i.e least amount of fishing)
+  
+  (area covered by mpa*protection level/total area of grid cells that contain a protected area)/n surrounding grid cells + 1 (or 1.5)
+
+## Species explortion
+
+# Load Species data
+
+```{r species_list, eval = F, echo = F}
+
+# NSB species list provided by Colette
+nsb_species <- my_path("D","Species","updated_species.csv", read = T) 
+
+# DBEM species
+dbem_species <- my_path("Spp",name ="dbem_spp_list.csv", read = T)
+
+# Exploited species
+# exploited_species <- my_data("exploited_species") %>% 
+  # filter(taxon_key %in% dbem_species$taxon_key)
+
+nsb_matching_species <- nsb_species %>% 
+  filter(correct_name %in% dbem_species$worms_name) %>% 
+  left_join(dbem_species %>% select(taxon_key,aphia_id, correct_name = worms_name)) %>% 
+  write_csv(my_path("D","Species",name ="new_nsb_dbem_matching_spp.csv"))
+
+# Update taxon list with new matching data
+
+taxon_list <- my_path("D", "species", "CpawSppList10.txt", read = T, header = F) %>% 
+  rename(taxon_key = v1)
+
+missing_taxa <- nsb_matching_species %>% 
+  filter(!taxon_key %in% taxon_list$taxon_key) %>% 
+  select(taxon_key)
+
+# Create species list for missing taxa
+new_spp_list <- my_path("D","species","CpawSppList11.txt")
+write.table(missing_taxa, file=new_spp_list, sep="\t", col.names = F, row.names = F)
+
+
+```
+
+
+## Spatial analysis
+
+### Shapefile Data
+
+
+```{r mpan_shape, eval = T, echo = F, message = F,warning = FALSE, cache = FALSE}
+
+suppressMessages(
+mpan_sf <- st_read(my_path("D","Spatial/draft_mpan","DRAFT_MAP_NETWORK_NAP_P3_IOAC_Sept2022.shp")) %>% 
+  # Remove the Z component for ease computation
+  st_zm(drop = TRUE)
+)
+#get out coordinate reference system information 
+# st_crs(mpan_sf)
+st_crs(mpan_sf)$epsg
+crs <- st_crs(mpan_sf)
+
+mpan_sf_2d <- ggplot(mpan_sf) +
+  geom_sf(aes(fill = as.character(UID_1))) +
+  theme(legend.position = "")
+
+# ggsave(filename = "../Results/Figures/shapefile_2d.png",mpan_sf_2d)
+print(mpan_sf_2d)
+```
+
+
+
+# Grid shapefile
+
+## Identify grids that are MPAs, surrounding an MPA and no-protected
+
+## 1.1 Load in grid data
+
+```{r grid, eval = T, echo = F}
+
+grid <- read_sf(my_path("D","Spatial/worldsq_ea/", name ="worldsq_EA.shp"))
+
+grid <- grid %>% filter(Lat > 48 & Lat < 56 & Lon > -136 & Lon < -120)
+
+grid <- st_transform(grid, crs = st_crs(crs)) %>% 
+  filter(PWater > 0)
+
+ggplot(grid) +
+  geom_sf()
+```
+
+## 1.2 Identify grids that are MPAs
+
+In this step we identify which grid cells have an MPA completely or partially covering it. 
+
+```{r mpa_overla, eval = T, echo = F, message = F}
+
+# Intersect the grid and the MPA shapefile
+grid_intersection <- st_intersection(grid, mpan_sf) %>%
+  group_by(Seq) %>%
+  summarise(geom = st_union(geometry)) %>%
+  mutate(geom = st_sfc(geom),
+         area = st_area(geom)) %>% 
+  mutate(status = "protected") %>% 
+  as.data.frame()
+
+# Identify grid cells that have some level of MPA within them 
+grid2 <- as.data.frame(grid) %>% 
+  left_join(grid_intersection, by = "Seq") %>% 
+  mutate(protected_area_m2 = as.numeric(area)) %>% 
+  select(-geom) %>% 
+  st_as_sf()
+
+# Plot it
+ggplot() + 
+  geom_sf(data = grid2, 
+          aes(fill = protected_area_m2)) +
+  geom_sf(data = mpan_sf, 
+          aes(), fill = NA, color = "white") +
+  scale_fill_viridis_b()
+
+
+```
+
+## 1.3 Estimate area
+
+Here we estimate the proportion of the grid cell that is protected using the area protected ($area_p$) relative to the area of the grid cell ($area_g$) in order to reduce fishing effort in grid celss that contain an MPA ($FE_{mpa}$):
+
+$FE_{mpa} = \frac{area_p}{area_g}$
+
+```{r area_est, eval = T, echo = F}
+
+grid2 <- grid2 %>% 
+  mutate(grid_area = st_area(.)) %>%
+  drop_units() %>% 
+  mutate(
+    prop = ifelse(status == "protected", (protected_area_m2/grid_area), 1)
+  ) 
+
+
+  ggplot() +
+    geom_sf(data = grid2, aes(fill = prop)) +
+    scale_fill_viridis_b("Proportion of grid\nprotected")
+```
+
+## 1.4 Find surrounding grid cells 
+
+Surrounding grid cells are limited to the grid cells immediately adjacent to a grid cell that is cover (complete or partially) by an MPA. The identification of surrounding grid cells is necessary to further re-allocate fishing effort to these cells as they benefit from the biomass spillover.
+
+
+```{r surroundig, eval = T, echo = F, message = F}
+
+grid_mpan <- grid2 %>% 
+  select(OBJECTID, Seq, Lat, Lon, geometry, status, protected_area_m2, grid_area)
+
+# Identify non-protected
+grid_mpan_no <- grid_mpan %>% filter(is.na(status))
+
+#create buffer
+buffer <- st_buffer(grid_mpan %>% filter(status == "protected"), 25000)
+
+intr <- st_intersection(grid_mpan_no, buffer)
+intr_seqs <- c(intr$Seq)
+
+grid_surround <- grid_mpan_no %>% 
+  filter(Seq %in% intr_seqs) %>% 
+  mutate(surrounding ="surrounding") %>% 
+  select(Seq, surrounding)
+
+
+ggplot() +
+  geom_sf(data = grid_surround , aes(), fill = "darkblue") +
+  geom_sf(data = grid_mpan %>% filter(status == "protected"), aes(), fill = "pink") +
+  geom_sf(data = mpan_sf, aes(), fill = NA, color = "black") +
+  ggtitle("Showing protected grid cells in red and surrounding in blue")
+
+```
+
+
+# Reallocate fishing effort
+
+Here we re-allocate fishing effort from the protected grid cells to those surrounding. We do this proportionally to the protected area and the number of surrounding grid cells. Right now, the proportion is accounted from all MPAs and re-distributed to all grid cells, but this can change. For this we first estimate the proportion to be allocated (*PropAllocate*):
+
+
+$$PropAllocate = \frac{tot_{mpa}}{tot_{area}}$$
+
+where $tot_{mpa}$ is the sum of the protected area ($m^2$) of all protected grid cells and $tot_{area}$ is the sum of the whole grided area (protected and surrounding). Then, we estimate the allocation of effort by first counting the number of surrounding grid cells and then allocating the proportion to the fishing effort of surrounding cells ($FE_{sur}$):
+
+$$FE_{sur} = 1+\frac{PropAllocate}{n_{surround}}$$
+This way, fishing effort in an MPA grid will be reduced by the proportion of the MPA in the grid ($FE_{mpa}$), in surroundings cells will be increased with the proportion allocated ($FE_{sur}$) while all other grid cells (no-protected) will have an DF at MSY.
+
+```{r fiseffort, eval = T, echo = F}
+
+#total proportion 
+#this will help allocate fishing effort to the surrounding areas. 
+tot_area = sum(grid_mpan$grid_area, na.rm = T)
+tot_mpa = sum(grid_mpan$protected_area_m2, na.rm = T)
+prop = tot_mpa/tot_area
+
+
+grid_use <- left_join(grid2, grid_surround %>% st_drop_geometry(), by = "Seq")
+
+grid_sc1 <- grid_use %>% 
+  mutate(prop = if_else(status %in% "protected", 1-prop, prop)) #these should all be 0
+
+#grid cells surrounding mpas
+n_surround <- grid_sc1 %>% 
+  st_drop_geometry() %>% 
+  filter(surrounding == "surrounding") %>% 
+  tally()
+
+#protected proportion to reallocate (calculated as area of each mpa/area of grid cells containing mpa)
+prop_allocate = tot_mpa/tot_area
+
+#allocate surrounding cells
+grid_sc1 <- grid_sc1 %>%  
+  mutate(FE_prop = if_else(surrounding %in% "surrounding",(prop_allocate/n_surround$n) +1 , prop),
+         status = ifelse(surrounding %in% "surrounding","surrounding",status),
+         status = ifelse(is.na(status),"unprotected",status)
+         )
+
+ggplot() +
+  geom_sf(data = subset(grid_sc1, grid_sc1$FE_prop != 1),
+          aes(fill = FE_prop)) +
+  geom_sf(data = mpan_sf, aes(), fill = NA, color = "white") +
+  scale_fill_viridis_b()
+  
+```
+
+## Incorporating grid into DBEM
+
+```{r}
+
+# Get grid from previous steps
+mpa_grid <- as.data.frame(grid_sc1) %>% 
+  ungroup() %>% 
+  select(index = OBJECTID,
+         lon = Lon,
+         lat = Lat,
+         fe_prop = FE_prop)
+
+# Load DBEM grid
+dbem_grid <- my_data("dbem_coords") %>% 
+  filter(!index %in% mpa_grid$index) %>%  #filter out BC
+  bind_rows(mpa_grid) %>% 
+  mutate(fe_prop = ifelse(is.na(fe_prop), 1,fe_prop)) #include fishing proportion
+
+# Map it to make sure it works
+dbem_grid %>% 
+  filter(lat > 40,
+         lon < -100) %>% 
+ggplot() +
+  geom_tile(
+      aes(
+        x = lon,
+        y = lat,
+        fill = log10(fe_prop)
+    )
+  ) +
+  scale_fill_viridis_b()
+
+
+# Prepare it to the DBEM
+dbem_grid_index <- dbem_grid %>% 
+  arrange(index) %>% 
+  select(fe_prop)
+
+# Create index
+name <- my_path("D","spatial","mpa_cpaw.txt")
+write.table(dbem_grid_index, file=name, sep="\t", col.names = F, row.names = F)
+
+
+```
+
+
+
+```{r}
+
+NSB_species_list_priorities <- read_excel("~/Library/CloudStorage/OneDrive-UBC/Data/cpaws_bc/Data/Species/NSB_species list_priorities.xlsx", 
+                                          sheet = "original list")
+
+dbem_data <- my_data("dbem_species") %>% 
+  # rename(scientific_name = taxon_name) %>% 
+  select(-common_name)
+  
+
+NSB_species_list_priorities %>% 
+  select(1:5) %>% 
+  left_join(dbem_data,
+             by = "genus") %>% 
+  mutate(same_spp = ifelse(scientific_name == taxon_name,"Yes","Sub")) %>% 
+  # View()
+  write_csv("cpaw_dbem.csv")
+
+
+
+
+```
+
+# Species ran
+
+## Load data
+
+```{r}
+
+# Get modelled species DF
+taxon_list <- my_path("D","Species",name ="nsb_dbem_matching_spp.csv", read = T) %>%
+  select(taxon_name = scientific_name) %>% 
+  left_join(my_data("dbem_species"))
+
+
+# Save spp list for DBEM
+CpawSppList <- taxon_list %>% 
+  select(taxon_key)
+
+# Create index
+name_spp_list <- my_path("D","species","CpawSppList10.txt")
+write.table(CpawSppList, file=name_spp_list, sep="\t", col.names = F, row.names = F)
+
+
+
+# Get MPA sf
+suppressMessages(
+  bs_sf <- st_read(my_path("D","Spatial/draft_mpan","DRAFT_MAP_NETWORK_NAP_P3_IOAC_Sept2022.shp")) %>% 
+    # Remove the Z component for ease computation
+    st_zm(drop = TRUE)
+) 
+st_crs(bs_sf)$epsg
+crs <- st_crs(bs_sf)
+
+bs_sf <- st_transform(bs_sf,4326)
+
+# Get EEZ
+
+bc_eez <- my_sf("SAU") %>% 
+  filter(eezid == 925)
+
+```
+
+## Plot maps per species
+
+
+```{r}
+
+# Get DBEM paths
+dbem_data <- my_path("G",
+          extra_path = "dbem/dbem_cmip6/r_data/C6GFDL85F1_t2", #SSP585 for now
+          list_files = "paths"
+  )
+
+# Filter out paths from speceis that we are interested in
+cpaw_paths <- dbem_data[grep(paste(taxon_list$taxon_key, collapse = "|"), dbem_data)]
+
+test <- dbem_data[grep(paste(601732, collapse = "|"), dbem_data)]
+
+
+
+# main fx
+
+main_fx <- function(paths){
+
+   # Wrap the entire function in a tryCatch block
+  result <- tryCatch({
+  load(paths)  
+  
+  # Load Abd or MCP data
+  
+  if(exists("sppabdfnl") == T){
+    data <- as.data.frame(sppabdfnl)
+    colnames(data) <- seq(1951,2100,1)
+    rm(sppabdfnl)
+    variable <- "abd"
+  }else{
+    data <- as.data.frame(sppMCPfnl)
+    colnames(data) <- seq(1951,2100,1)
+    rm(sppMCPfnl)
+    variable <- "mcp"
+  }
+  
+  # Get information
+  info <- taxon_list %>% 
+    filter(taxon_key %in% str_sub(paths,92,97)) 
+  print(info)
+  title <- unique(paste0("Percentage Change"," (",variable,") for ",info$common_name," (",info$taxon_name,")"))
+  
+  # Make data plot
+  bc_data <-
+    data %>%
+    # Select years to analyze
+    select(`1995`:`2014`,`2040`:`2059`,`2081`:`2100`) %>% 
+    # filter BC
+    bind_cols(
+      my_data("dbem_coords")
+    ) %>% 
+    right_join(
+      my_data("sau_index") %>% filter(eez_name == "Canada (Pacific)"),
+      by ="index"
+    ) %>% 
+    # test run
+    # ggplot() +
+    # geom_tile(
+    #   aes(
+    #     x = lon,
+    #     y = lat,
+    #     fill = `2050`
+    #   )
+    # )
+    # Wrangling data
+    gather("year","value",`1995`:`2100`) %>% 
+    select(-eez_name,-eez_id,-index) %>% 
+    # Determine time periods
+    mutate(
+      time_period = ifelse(year <= 2014, "2014_hist",
+                           ifelse(year >= 2040 & year <= 2059, "2050_mid","2100_end")
+      )
+    ) %>% 
+    # Average decades for natural variabliity 
+    group_by(time_period,lon,lat) %>% 
+    summarise(mean_nat = mean(value, na.rm = T),
+              .groups = "keep") %>% 
+    spread(time_period,mean_nat) %>% 
+    ungroup() %>% 
+    mutate(per_chng_2050_mid = per_cng_fx(`2014_hist`,`2050_mid`,limit = 100),
+           per_chng_2100_end = per_cng_fx(`2014_hist`,`2100_end`,limit = 100)
+    ) %>% 
+    select(lon,lat,per_chng_2050_mid,per_chng_2100_end) %>% 
+    gather("period","change",per_chng_2050_mid,per_chng_2100_end) %>% 
+    ggplot() +
+    geom_tile(
+      aes(
+        x = lon,
+        y = lat,
+        fill = change,
+        color = change
+      )
+    ) +
+    scale_fill_gradient2("Change (%)",na.value = "white") +
+    scale_color_gradient2("Change (%)", na.value = "white") +
+    # extra maps
+    geom_sf(data = bs_sf, aes(), color = "black", fill = "transparent") +
+    geom_sf(data = bc_eez, aes(), color = "grey50", fill = "transparent") +
+    MyFunctions::my_land_map() +
+    labs(
+      x = "Longitude",
+      y = "Latitude"
+    ) +
+    coord_sf(
+      xlim = c(-120,-140),
+      ylim = c(46,56)
+    ) +
+    theme_classic()+
+    ggtitle(title)+
+    facet_wrap(~period, ncol = 2)
+  
+  # plot_name <- unique(paste0("../Results/Figures/changes/",taxon$common_name,".png"))
+  
+  plot_name <- my_path("R",extra_path = "per_change",paste0(unique(info$common_name),"_",variable,".png")) 
+  
+  ggsave(plot = bc_data,
+         filename = str_to_lower(gsub(" ","_",plot_name)),
+         height = 4,
+         width = 8)
+   
+  # Return a success message or result if needed
+    return("Function completed successfully.")
+    
+  }, error = function(e) {
+    # Error handling
+    message("Error occurred in main_fx:", e$message)
+    # Return a message or value to indicate failure
+    return("Function encountered an error but continued execution.")
+  })
+  
+}
+
+
+# Run function
+# main_fx(cpaw_paths[1]) #single
+
+lapply(cpaw_paths, main_fx) # Multiple
+
+
+```
+

@@ -11,7 +11,6 @@ library(doParallel)
 category <- c("Abd")
 
 # Partial fix for not working species
-# spplist <- dplyr::filter(spplist, V1 %in% c("603310","604708"))
 
 # Determine the start and end year you want to include
 year_one <- 1951

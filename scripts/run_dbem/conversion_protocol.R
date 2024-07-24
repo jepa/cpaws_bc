@@ -8,7 +8,7 @@ library(tidyverse)
 library(doParallel)
 
 # Variables to be converted (Abundace or Catch)
-category <- c("Abd")
+category <- c("Catch")
 
 # Partial fix for not working species
 

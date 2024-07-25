@@ -1,0 +1,91 @@
+---
+title: "Projection analysis"
+output: html_notebook
+---
+
+```{r setup, message = F, eval = T, echo = F}
+
+library(MyFunctions)
+
+my_lib(
+  c(
+    "tidyverse",
+    "sf",
+    "st",
+    "janitor"
+  )
+)
+
+# Fix new updates of sf package
+sf::sf_use_s2(use_s2 = FALSE)
+
+select <- dplyr::select
+```
+
+
+## Load data
+
+```{r}
+
+# Get modelled species DF
+taxon_list <- my_path("D","Species",name ="updated_species.csv", read = T) %>% 
+  select(taxon_name = scientific_name) %>% 
+  left_join(my_data("dbem_species")) %>% 
+  filter(!is.na(taxon_key)) # remove species not modeled
+
+# Get MPA sf
+suppressMessages(
+  bs_sf <- st_read(my_path("D","Spatial/draft_mpan","DRAFT_MAP_NETWORK_NAP_P3_IOAC_Sept2022.shp")) %>% 
+    # Remove the Z component for ease computation
+    st_zm(drop = TRUE)
+) 
+st_crs(bs_sf)$epsg
+crs <- st_crs(bs_sf)
+
+bs_sf <- st_transform(bs_sf,4326)
+
+# Get EEZ
+
+bc_eez <- my_sf("SAU") %>% 
+  filter(eezid == 925)
+
+```
+
+## Plot maps per species
+
+
+```{r}
+
+
+# FOR NON MPA RUNS
+# Get DBEM paths
+dbem_data <- my_path("G",
+                     # extra_path = "raw/C6GFDL26F1CPAW", #SSP126 for now
+                     extra_path = "dbem/dbem_cmip6/r_data/C6GFDL26F1_t2", #SSP126 for now
+                     list_files = "paths"
+)
+
+# For non-mpa runs
+# Filter out paths from speceis that we are interested in
+cpaw_paths <- dbem_data[grep(paste(taxon_list$taxon_key, collapse = "|"), dbem_data)]
+
+lapply(cpaw_paths, pr_chg_fx, mpa = F) # Multiple
+
+
+
+# For MPA runs
+
+dbem_data <- my_path("R",
+                     extra_path = "raw/C6GFDL26F1CPAW/", #SSP126 for now
+                     list_files = "paths"
+)
+
+# paths <- cpaw_paths[1]
+
+cpaw_paths <- dbem_data
+
+lapply(cpaw_paths, pr_chg_fx, mpa = T) # Multiple
+
+
+```
+

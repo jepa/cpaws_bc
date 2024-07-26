@@ -1,6 +1,12 @@
 ---
 title: "Projection analysis"
-output: html_notebook
+author: "*Compiled on `r date()` by `r Sys.info()['user']`*"
+output: 
+  html_notebook:
+    code_folding: hide
+    number_sections: true
+    theme: cerulean
+    highlight: haddock
 ---
 
 ```{r setup, message = F, eval = T, echo = F}
@@ -12,7 +18,10 @@ my_lib(
     "tidyverse",
     "sf",
     "st",
-    "janitor"
+    "janitor",
+    "zoo",
+    "knitr",
+    "kableExtra"
   )
 )
 
@@ -23,9 +32,9 @@ select <- dplyr::select
 ```
 
 
-## Load data
+# Load data
 
-```{r}
+```{r load_data, eval = T}
 
 # Get modelled species DF
 taxon_list <- my_path("D","Species",name ="updated_species.csv", read = T) %>% 
@@ -45,47 +54,685 @@ crs <- st_crs(bs_sf)
 bs_sf <- st_transform(bs_sf,4326)
 
 # Get EEZ
-
 bc_eez <- my_sf("SAU") %>% 
   filter(eezid == 925)
 
+# Get BC grid to filter out
+bc_grid <- my_data("sau_index") %>% 
+  filter(eez_name == "Canada (Pacific)") %>% 
+  pull(index)
+
 ```
 
-## Plot maps per species
+# Plot maps per species
 
 
-```{r}
+```{r eval = F, create_maps}
 
 
 # FOR NON MPA RUNS
 # Get DBEM paths
-dbem_data <- my_path("G",
-                     # extra_path = "raw/C6GFDL26F1CPAW", #SSP126 for now
-                     extra_path = "dbem/dbem_cmip6/r_data/C6GFDL26F1_t2", #SSP126 for now
-                     list_files = "paths"
-)
+# dbem_no_mpa <- my_path("G",# extra_path = "raw/C6GFDL26F1CPAW", #SSP126 for now
+#                        extra_path = "dbem/dbem_cmip6/r_data/C6GFDL26F1_t2", #SSP126 for now
+#                        list_files = "paths"
+                       # )
 
 # For non-mpa runs
 # Filter out paths from speceis that we are interested in
-cpaw_paths <- dbem_data[grep(paste(taxon_list$taxon_key, collapse = "|"), dbem_data)]
+dbem_no_mpa <- dbem_no_mpa[grep(paste(taxon_list$taxon_key, collapse = "|"), dbem_no_mpa)]
 
-lapply(cpaw_paths, pr_chg_fx, mpa = F) # Multiple
+lapply(dbem_no_mpa, pr_chg_fx, mpa = F) # Multiple
 
 
 
 # For MPA runs
 
-dbem_data <- my_path("R",
-                     extra_path = "raw/C6GFDL26F1CPAW/", #SSP126 for now
-                     list_files = "paths"
+dbem_mpa_data <- my_path("R",
+                         extra_path = "raw/C6GFDL26F1CPAW/", #SSP126 for now
+                         list_files = "paths"
 )
 
-# paths <- cpaw_paths[1]
+dbem_mpa_data <- dbem_mpa_data[grep(paste(taxon_list$taxon_key, collapse = "|"), dbem_mpa_data)]
 
-cpaw_paths <- dbem_data
 
-lapply(cpaw_paths, pr_chg_fx, mpa = T) # Multiple
+
+lapply(dbem_mpa_data, pr_chg_fx, mpa = T) # Multiple
 
 
 ```
+
+
+# Lineal plot of projection differences 
+
+## Per EEZ
+
+### Abundance
+
+These plots represent the total abundance in the whole BC EEZ for each species, regardless of the "conservation status" of the grid cell. We basically add up all gridcells in the EEZ by species, year and DBEM run (i.e., run considering the MPA grid and runs without). Remember that absolute DBEM values should be seen as reference points, and not real estimates of population abundance in the water.
+
+Overall, it is expected that the MPA runs will have more abundance as fishing is closed in some areas (e.g., grid cells that cointain an MPA) so naturally, there is less $f_{mort}$ happening within the EEZ.
+
+```{r abd_summary, eval = F}
+
+variable = "Abd"
+
+dbem_paths <- taxon_list %>% 
+  distinct() %>% 
+  select(taxon_key) %>% 
+  mutate(dbem_no_mpa_path = paste0("~/Library/CloudStorage/OneDrive-UBC/Data/dbem/dbem_cmip6/r_data/C6GFDL26F1_t2/",taxon_key,variable,".RData"),
+         dbem_mpa_path = paste0("~/Library/CloudStorage/OneDrive-UBC/Data/cpaws_bc/Results/raw/C6GFDL26F1CPAW/",taxon_key,variable,".RData")
+  )
+
+
+agg_per_species_abd <- agg_per_spp_abd(dbem_paths)
+
+write_csv(agg_per_species_abd, my_path("R","tables","agg_per_species_abd.csv"))
+
+```
+
+#### Total abundance
+
+Figure showing the total abundance (raw DBEM outputs) per species over the years across the whole BC. EEZ. 
+
+```{r total_abd, eval = T, fig.width=20, fig.height=15, message=F,warning=F}
+
+# read data
+agg_per_species_abd <- my_path("R","tables","agg_per_species_abd.csv",read = T) %>% 
+  left_join(taxon_list,
+            join_by("taxon_key"))
+
+# Raw data
+plot_agg_per_species_abd <- ggplot(agg_per_species_abd) +
+  geom_line(
+    aes(
+      x = as.numeric(year),
+      y = sum,
+      col = run
+    )
+  ) +
+  facet_wrap(~common_name, scales = "free") +
+  theme_classic()+
+  theme(
+  text = element_text(size = 20)  # Set base text size
+)
+
+ggsave(my_path("R","figures","agg_per_species_abd.png"),
+       plot = plot_agg_per_species_abd,
+       width = 20,
+       height = 15)
+
+
+print(plot_agg_per_species_abd)
+```
+
+#### Difference in abundance
+
+Figure showing the difference in abundance between the MPA and the no-MPA runs per species over the years across the whole BC. EEZ. Percentage difference in abundance ($\Delta{abd}$) was calculated as:
+
+$$ \Delta{abd} = \frac{mpa-nompa}{nompa} * 100$$
+
+Thus, results should be read as; positive values representing more abundance in the MPA runs and negative values more abundance in the non-MPA runs. Note that $ \Delta{abd}$ was caped at 100%/-100% for visualization purposes. Also showing a 10 years running mean. One can argue that the larger the difference, the larger the effect of MPA in the population.
+
+**Note:** This type of result has been contested previously on peer review as "logical" due to the nature of the model.
+
+
+```{r diff_abd, eval = T, fig.width=20, fig.height=15, message=F, warning = F}
+
+# Raw data
+diff_plot <- agg_per_species_abd %>% 
+  select(-variable,-mean) %>% 
+  group_by(year, taxon_key,common_name) %>%
+  summarize(diff = sum[run == "mpa"] - sum[run == "no_mpa"],
+            percent_diff = (diff / sum[run == "no_mpa"]) * 100
+  ) %>% 
+  mutate(percent_diff_capped = pmax(pmin(percent_diff, 100), -100)) %>% 
+  group_by(taxon_key,common_name) %>%
+  arrange(year) %>%
+  mutate(
+    run_avg = rollmean(percent_diff, k = 10, align = "right", fill = NA)
+  ) %>% 
+  # View()
+  ggplot() +
+  geom_line(
+    aes(
+      x = as.numeric(year),
+      y = percent_diff_capped,
+      color = "percent_diff_capped"
+    )
+  ) +
+  geom_line(
+    aes(
+      x = as.numeric(year),
+      y = run_avg,
+      group = taxon_key,
+      color = "running_mean"
+    )
+  ) +
+  theme_classic()+
+  theme(
+  text = element_text(size = 20)  # Set base text size
+  ) +
+  facet_wrap(~common_name, scales = "free")
+
+
+ggsave(my_path("R","figures","abs_diff_per_species_abd.png"),
+       plot = diff_plot,
+       width = 20,
+       height = 15)
+
+print(diff_plot)
+```
+
+#### Relative difference
+
+The following figure and table shows the percentage difference between the MPA and the no-MPA runs by an early period (2050) and the end of the century (2100). For now, periods are defined as:
+
+- "historic", year > 1995 & year < 2014, 
+- "early_2050", year > 2041 & year < 2060
+- "end_2100", year > 2081 & year < 2100
+
+
+Here, the difference (`diff_early`) represents the difference in percentage change of the two models. Taking Capelin as an example, in the MPA runs, capelin has a historically abundance of 120,121 tones which decreases by 55% (to 53,624 tones) by 2050 and 60% (to 45,769 tones) by 2100. In the no-MPA runs, the numbers are slightly different with a historical abundance of 102,222, a decrease of 54% (to 46,829 tons) by 2050 and a total decrease of 60% (to 40,382) by 2100. That means that, for Capelin, the next figure shows `diff-early = -1%` (-55 - -54) and a `diff-end = -2%`.
+
+*Note: The most common reason why the MPA model often presents higher loss of biomass is because it has higher overall biomass, so the loss is larger, nevertheless, the absolute biomass is still higher in the MPA model than in the non-MPA model (as shown in figure 1).*
+
+
+```{r relative_abd_tbl, eval = T, fig.width=8, fig.height=7, message=F,warning=F}
+# Raw data
+abd_relative_df<- agg_per_species_abd %>% 
+  select(-variable,-mean) %>% 
+  mutate(
+    time_frame = ifelse(year > 1995 & year < 2014, "historic",
+                        ifelse(year > 2041 & year < 2060, "early_2050",
+                               ifelse(year > 2081 & year < 2100, "end_2100",NA)
+                        )
+    )
+  ) %>% 
+  filter(!is.na(time_frame)) %>% 
+  group_by(run,time_frame, taxon_key,common_name) %>%
+  summarise(nat_mean_sum = round(mean(sum,na.rm = T))) %>% 
+  group_by(taxon_key,common_name) %>% 
+  spread(time_frame,nat_mean_sum) %>% 
+  mutate(per_chng_early = my_chng(`historic`,`early_2050`,limit = 100),
+         per_chng_end = my_chng(`historic`,`end_2100`,limit = 100)
+  )
+
+
+print(abd_relative_df %>% select(1:3,historic,everything()) %>% filter(common_name == "Capelin"))
+
+```
+
+
+```{r relative_abd_fig, eval = T, fig.width=8, fig.height=7, message=F,warning=F}
+
+rel_diff<- abd_relative_df %>% 
+  group_by(taxon_key,common_name) %>%
+  # View()
+  summarize(
+    diff_early = per_chng_early[run == "mpa"] - per_chng_early[run == "no_mpa"],
+    diff_end = per_chng_end[run == "mpa"] - per_chng_end[run == "no_mpa"]
+  ) %>% 
+  # View()
+  gather("time_frame","percentage_difference",diff_early:diff_end) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = common_name,
+      y = percentage_difference,
+      color = time_frame,
+      fill = time_frame
+    ),
+    stat = "identity",
+    position = "dodge"
+  ) +
+  coord_flip() +
+  theme_classic() +
+  theme(
+    text = element_text(size = 16)  # Set base text size
+  )
+
+ggsave(my_path("R","figures","rel_diff_per_species_abd.png"),
+       plot = rel_diff,
+       width = 10,
+       height = 8)
+
+print(rel_diff)
+  
+```
+
+
+### Maximum Catch Potential
+
+```{r mcp_summary, eval = F}
+
+variable = "Catch"
+
+dbem_paths <- taxon_list %>% 
+  distinct() %>% 
+  select(taxon_key) %>% 
+  mutate(dbem_no_mpa_path = paste0("~/Library/CloudStorage/OneDrive-UBC/Data/dbem/dbem_cmip6/r_data/C6GFDL26F1_t2/",taxon_key,"MCP.RData"),
+         dbem_mpa_path = paste0("~/Library/CloudStorage/OneDrive-UBC/Data/cpaws_bc/Results/raw/C6GFDL26F1CPAW/",taxon_key,variable,".RData")
+  )
+
+
+agg_per_species_mcp <- agg_per_spp_mcp(dbem_paths)
+
+write_csv(agg_per_species_mcp, my_path("R","tables","agg_per_species_mcp.csv"))
+
+```
+
+#### Total MCP
+
+Figure showing the total MCP (raw DBEM outputs) per species over the years across the whole BC. EEZ. 
+
+```{r mcp_total, eval = T, echo = T, fig.width = 20, fig.height = 15, message=F,warning=F}
+
+# read data
+agg_per_species_mcp <- my_path("R","tables","agg_per_species_mcp.csv",read = T) %>% 
+  left_join(taxon_list)
+
+# Raw data
+plot_agg_per_species_mcp<- ggplot(agg_per_species_mcp) +
+  geom_line(
+    aes(
+      x = as.numeric(year),
+      y = sum,
+      col = run
+    )
+  ) +
+  facet_wrap(~common_name, scales = "free") +
+  theme_classic()+
+  theme(
+  text = element_text(size = 20)  # Set base text size
+)
+
+
+ggsave(my_path("R","figures","agg_per_species_mcp.png"),
+       plot = plot_agg_per_species_mcp,
+       width = 20,
+       height = 15)
+
+
+print(plot_agg_per_species_mcp)
+
+```
+
+#### Difference in MCP
+
+```{r mcp_diff, eval = T, echo = T, fig.width = 15, fig.height = 10, message=F,warning=F}
+
+# Raw data
+diff_plot_mcp<- agg_per_species_mcp %>% 
+  select(-variable,-mean) %>% 
+  group_by(year, taxon_key,common_name) %>%
+  summarize(diff = sum[run == "mpa"] - sum[run == "no_mpa"],
+            percent_diff = (diff / sum[run == "no_mpa"]) * 100
+  ) %>% 
+  mutate(percent_diff_capped = pmax(pmin(percent_diff, 100), -100)) %>% 
+  group_by(taxon_key,common_name) %>%
+  arrange(year) %>%
+  mutate(
+    run_avg = rollmean(percent_diff, k = 10, align = "right", fill = NA)
+  ) %>% 
+  # View()
+  ggplot() +
+  geom_line(
+    aes(
+      x = as.numeric(year),
+      y = percent_diff_capped,
+      color = "percent_diff_capped"
+    )
+  ) +
+  geom_line(
+    aes(
+      x = as.numeric(year),
+      y = run_avg,
+      group = taxon_key,
+      color = "running_mean"
+    )
+  ) +
+  facet_wrap(~common_name, scales = "free") +
+  theme_classic()+
+  theme(
+    text = element_text(size = 20)  # Set base text size
+  )
+
+
+
+ggsave(my_path("R","figures","abs_diff_per_species_mcp.png"),
+       plot = diff_plot_mcp,
+       width = 20,
+       height = 15)
+
+print(diff_plot_mcp)
+
+```
+
+#### Relative difference
+
+
+```{r mcp_relative_diff, eval = T, echo = T, fig.width = 8, fig.height = 5, message=F,warning=F}
+
+# Raw data
+mcp_relative_df <- agg_per_species_mcp %>% 
+  select(-variable,-mean) %>% 
+  mutate(
+    time_frame = ifelse(year > 1995 & year < 2014, "historic",
+                        ifelse(year > 2041 & year < 2060, "early_2050",
+                               ifelse(year > 2081 & year < 2100, "end_2100",NA)
+                        )
+    )
+  ) %>% 
+  filter(!is.na(time_frame)) %>% 
+  group_by(run,time_frame, taxon_key,common_name) %>%
+  summarise(nat_mean_sum = round(mean(sum,na.rm = T))) %>% 
+  group_by(taxon_key,common_name) %>% 
+  spread(time_frame,nat_mean_sum) %>% 
+  mutate(per_chng_early = my_chng(`historic`,`early_2050`,limit = 100),
+         per_chng_end = my_chng(`historic`,`end_2100`,limit = 100)
+  ) %>% 
+  arrange(common_name)
+
+print(mcp_relative_df %>% select(1:3,historic,everything()) %>% filter(common_name == "Capelin"))
+
+```
+
+
+```{r}
+
+
+
+rel_diff_mcp<- mcp_relative_df %>% 
+  group_by(taxon_key,common_name) %>%
+  # View()
+  summarize(
+    diff_early = per_chng_early[run == "mpa"] - per_chng_early[run == "no_mpa"],
+    diff_end = per_chng_end[run == "mpa"] - per_chng_end[run == "no_mpa"]
+  ) %>% 
+  gather("time_frame","percentage_difference",diff_early:diff_end) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = common_name,
+      y = percentage_difference,
+      color = time_frame,
+      fill = time_frame
+    ),
+    stat = "identity",
+    position = "dodge"
+  ) +
+  coord_flip() +
+  theme_classic()
+
+
+ggsave(my_path("R","figures","rel_diff_per_species_mcp.png"),
+       plot = rel_diff_mcp,
+       width = 10,
+       height = 8)
+
+print(rel_diff_mcp)
+
+  
+```
+
+This table shows the percentage difference between the MPA and the no-MPA runs
+
+```{r per_diff_tablemcp, eval = T, message=F,warning=F}
+
+print(mcp_relative_df)
+
+```
+
+## Per grid
+
+### Abundance
+
+#### Grid cell Status
+
+Each grid cell is classified under a conservation status. Grid cells that have an MPA are classified as *protected*, those contiguous are *surrounding* and all other grids are *non-protected*. Interestingly, due to connectivity of grid cells, most-if-not-all of the Northern Shelf Bioregion is under some level of protection. 
+
+
+```{r grid_status}
+
+# Create gird status
+status_grid <- my_path("D","Spatial","mpa_cpaw.csv", read = T) %>% 
+  rowid_to_column("index") %>% 
+      filter(index %in% bc_grid) %>% 
+  mutate(
+    status = ifelse(x1 == 1, "non-protected",
+                    ifelse(x1 > 1, "surrounding","protected"))
+  ) %>% 
+  left_join(my_data("dbem_coords"))
+
+# Save for further analysis
+write_csv(status_grid,my_path("D","spatial","status_grid.csv"))
+
+ggplot(status_grid) +
+  geom_tile(aes(x =lon,y=lat,fill=status)) +
+  geom_sf(data = bs_sf,aes(), fill ="transparent")
+
+```
+
+
+```{r abd_grid_df}
+
+status_grid <- my_path("D","spatial","status_grid.csv",read = T)
+
+variable = "Abd"
+
+dbem_paths <- taxon_list %>% 
+  distinct() %>% 
+  select(taxon_key) %>% 
+  mutate(dbem_no_mpa_path = paste0("~/Library/CloudStorage/OneDrive-UBC/Data/dbem/dbem_cmip6/r_data/C6GFDL26F1_t2/",taxon_key,variable,".RData"),
+         dbem_mpa_path = paste0("~/Library/CloudStorage/OneDrive-UBC/Data/cpaws_bc/Results/raw/C6GFDL26F1CPAW/",taxon_key,variable,".RData")
+  )
+
+
+grid_per_species_abd <- agg_per_spp_abd(dbem_paths, grid = T)
+
+write_csv(grid_per_species_abd, my_path("R","tables","grid_per_species_abd.csv"))
+
+head(grid_per_species_abd)
+```
+
+#### Total abundance per grid cell status
+
+Here we are simply looking at the total abundance sum by grid cell status for each species and time period. As before, it is expected that the MPA runs have more than the non-MPA runs, especially within the *protection* category. 
+
+
+```{r grid_abd, fig.height=20, fig.width=15}
+
+grid_per_species_abd <- my_path("R","tables","grid_per_species_abd.csv", read = T) %>% 
+  left_join(taxon_list) %>% 
+  filter(taxon_key != 601732) # remove mola mola
+
+
+grid_abd_plot <- grid_per_species_abd %>% 
+  filter(time_frame != "historic") %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = common_name,
+      y = sum,
+      color = run,
+      fill = run
+    ),
+    stat = "identity",
+    position = "dodge"
+  ) +
+  coord_flip() +
+  facet_grid(status~time_frame,scales = "free") +
+  theme_classic() +
+  theme(
+  text = element_text(size = 15)  # Set base text size
+  )
+
+ggsave(my_path("R","figures","grid_per_species_abd.png"),
+       plot = grid_abd_plot,
+       width = 15,
+       height = 20)
+
+print(grid_abd_plot)
+
+
+```
+
+
+#### Difference in abundance per grid cell
+
+Figure showing the difference in abundance between the MPA and the no-MPA runs per species and per grid cell category. Percentage difference in abundance ($\Delta{abd}$) was calculated for each category as:
+
+$$ \Delta{abd} = \frac{mpa-nompa}{nompa} * 100$$
+
+Thus, results should be read as; positive values representing more abundance in the MPA runs and negative values more abundance in the non-MPA runs. Note that $ \Delta{abd}$ was caped at 100%/-100% for visualization purposes. One can argue that the larger the difference, the larger the effect of MPA in the population.
+
+**Note:** This type of result has been contested previously on peer review as "logical" due to the nature of the model.
+
+```{r grid_diff_abd, eval = T, fig.width=16, fig.height=20, message=F, warning = F}
+
+# Raw data
+grid_diff_plot <-
+  grid_per_species_abd %>% 
+  filter(time_frame != "historic") %>% 
+  select(-variable,-mean) %>% 
+  group_by(status, taxon_key,common_name,time_frame) %>%
+  summarize(diff = sum[run == "mpa"] - sum[run == "no_mpa"],
+            percent_diff = (diff / sum[run == "no_mpa"]) * 100
+  ) %>% 
+  mutate(percent_diff_capped = pmax(pmin(percent_diff, 100), -100)) %>% 
+  # View()
+  ggplot() +
+  geom_bar(
+    aes(
+      x = common_name,
+      y = percent_diff_capped,
+      fill = percent_diff_capped
+    ),
+    stat = "identity",
+    position = "dodge"
+  ) +
+  theme_classic()+
+  coord_flip() +
+  theme(
+  text = element_text(size = 15)  # Set base text size
+  ) +
+  facet_grid(status~time_frame, scales = "free") +
+  scale_fill_gradient2()
+
+
+ggsave(my_path("R","figures","grid_diff_per_species_abd.png"),
+       plot = grid_diff_plot,
+       width = 15,
+       height = 20)
+
+print(grid_diff_plot)
+
+```
+
+### MCP 
+
+```{r mcp_grid_df}
+
+status_grid <- my_path("D","spatial","status_grid.csv",read = T)
+
+variable = "Catch"
+
+dbem_paths <- taxon_list %>% 
+  distinct() %>% 
+  select(taxon_key) %>% 
+  mutate(dbem_no_mpa_path = paste0("~/Library/CloudStorage/OneDrive-UBC/Data/dbem/dbem_cmip6/r_data/C6GFDL26F1_t2/",taxon_key,"MCP.RData"),
+         dbem_mpa_path = paste0("~/Library/CloudStorage/OneDrive-UBC/Data/cpaws_bc/Results/raw/C6GFDL26F1CPAW/",taxon_key,variable,".RData")
+  )
+
+grid_per_species_mcp <- agg_per_spp_mcp(dbem_paths, grid = T)
+
+write_csv(grid_per_species_mcp, my_path("R","tables","grid_per_species_mcp.csv"))
+```
+
+#### Total MCP per grid cell status
+
+Here we are simply looking at the total abundance sum by grid cell status for each species and time period. As before, it is expected that the MPA runs have less than the non-MPA runs, especially within the *protection* category since fishing effort is limited in these cells. 
+
+
+```{r grid_mcp, fig.height=20, fig.width=15}
+
+grid_per_species_mcp <- my_path("R","tables","grid_per_species_mcp.csv", read = T) %>% 
+  left_join(taxon_list) %>% 
+  filter(taxon_key != 601732) # remove mola mola
+
+
+grid_mcp_plot <- grid_per_species_mcp %>% 
+  filter(time_frame != "historic") %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = common_name,
+      y = sum,
+      color = run,
+      fill = run
+    ),
+    stat = "identity",
+    position = "dodge"
+  ) +
+  coord_flip() +
+  facet_grid(status~time_frame,scales = "free") +
+  theme_classic() +
+  theme(
+  text = element_text(size = 15)  # Set base text size
+  )
+
+ggsave(my_path("R","figures","grid_per_species_mcp.png"),
+       plot = grid_mcp_plot,
+       width = 15,
+       height = 20)
+
+print(grid_mcp_plot)
+
+
+```
+
+#### Difference in MCP per grid cell
+
+```{r grid_diff_mcp, eval = T, fig.width=16, fig.height=20, message=F, warning = F}
+
+# Raw data
+grid_diff_plot_mcp <-
+  grid_per_species_mcp %>% 
+  filter(time_frame != "historic") %>% 
+  select(-variable,-mean) %>% 
+  group_by(status, taxon_key,common_name,time_frame) %>%
+  summarize(diff = sum[run == "mpa"] - sum[run == "no_mpa"],
+            percent_diff = (diff / sum[run == "no_mpa"]) * 100
+  ) %>% 
+  mutate(percent_diff_capped = pmax(pmin(percent_diff, 100), -100)) %>% 
+  # View()
+  ggplot() +
+  geom_bar(
+    aes(
+      x = common_name,
+      y = percent_diff_capped,
+      fill = percent_diff_capped
+    ),
+    stat = "identity",
+    position = "dodge"
+  ) +
+  theme_classic()+
+  coord_flip() +
+  theme(
+  text = element_text(size = 15)  # Set base text size
+  ) +
+  facet_grid(status~time_frame, scales = "free") +
+  scale_fill_gradient2()
+
+
+ggsave(my_path("R","figures","grid_diff_per_species_mcp.png"),
+       plot = grid_diff_plot_mcp,
+       width = 15,
+       height = 20)
+
+print(grid_diff_plot_mcp)
+
+```
+
+
 

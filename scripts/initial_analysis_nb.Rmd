@@ -13,6 +13,7 @@ library(MyFunctions)
 
 my_lib(
   c(
+    "readxl",
     "tidyverse",
     "sf",
     "st",
@@ -329,6 +330,8 @@ NSB_species_list_priorities %>%
   # View()
   write_csv("cpaw_dbem.csv")
 
+# Missing species
+
 
 # Get modelled species DF
 taxon_list <- my_path("D","Species",name ="nsb_dbem_matching_spp.csv", read = T) %>%
@@ -346,4 +349,61 @@ write.table(CpawSppList, file=name_spp_list, sep="\t", col.names = F, row.names 
 
 
 ```
+
+## Genus matching
+
+There are some species of interest taht do not have species data information to run the DBEM with. For these species we will use an average of genus
+
+
+```{r}
+
+# Match species with missing data with genus
+missing_s <- my_path("D","Species",name ="updated_species.csv", read = T) %>%
+  select(taxon_name=scientific_name,correct_name,genus = genus_other) %>% 
+  left_join(my_data("dbem_species"),
+            by = c("taxon_name","genus")) %>% 
+  filter(is.na(taxon_key)) %>% 
+  select(scientific_name = taxon_name, genus) %>% 
+  left_join(my_data("dbem_species"),
+            by = "genus") %>% 
+  select(scientific_name,genus,taxon_sub = taxon_name,taxon_key)
+
+
+# Save data
+write_csv(
+  missing_s %>% filter(!is.na(taxon_key)),
+  my_path("D","Species",name ="species_to_genus_sub.csv", read = F)
+)
+
+
+# Get species with missing data
+species_to_sub  <- missing_s %>% 
+  filter(!is.na(taxon_key)) %>% 
+  group_by(scientific_name) %>% 
+  tally() 
+
+# Still some species missing
+missing_g <- missing_s %>% 
+  filter(is.na(taxon_key)) %>% 
+  group_by(scientific_name) %>% 
+  tally() 
+
+# Full list
+spp_data_source <- my_path("D","Species",name ="updated_species.csv", read = T) %>%
+  mutate(
+    data_source = ifelse(scientific_name %in% species_to_sub$scientific_name, "genus",
+                         ifelse(scientific_name %in% missin_g$scientific_name, "no data","species"
+                         )
+    )
+  )
+
+# Save species
+write_csv(
+  spp_data_source,
+  my_path("D","Species",name ="species_data_sources.csv", read = F)
+)
+
+```
+
+
 

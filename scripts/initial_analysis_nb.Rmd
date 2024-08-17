@@ -313,61 +313,47 @@ write.table(dbem_grid_index, file=name, sep="\t", col.names = F, row.names = F)
 # Species selection
 
 ```{r}
+# Load updated species list by Colette
+# Note these species have been crossreff. with the WORMS database for taxonomy
+nsb_species <- my_path("D","species", "nsb_updated_species.csv", read = T)
 
-NSB_species_list_priorities <- read_excel("~/Library/CloudStorage/OneDrive-UBC/Data/cpaws_bc/Data/Species/NSB_species list_priorities.xlsx", 
-                                          sheet = "original list")
-
-dbem_data <- my_data("dbem_species") %>% 
-  # rename(scientific_name = taxon_name) %>% 
-  select(-common_name)
-
-
-NSB_species_list_priorities %>% 
-  select(1:5) %>% 
-  left_join(dbem_data,
-            by = "genus") %>% 
-  mutate(same_spp = ifelse(scientific_name == taxon_name,"Yes","Sub")) %>% 
-  # View()
-  write_csv("cpaw_dbem.csv")
-
-# Missing species
-
-
-# Get modelled species DF
-taxon_list <- my_path("D","Species",name ="nsb_dbem_matching_spp.csv", read = T) %>%
-  select(taxon_name = scientific_name) %>% 
-  left_join(my_data("dbem_species"))
-
-
-# Save spp list for DBEM
-CpawSppList <- taxon_list %>% 
-  select(taxon_key)
+# Load DBEM species list
+dbem_species <- my_data("dbem_species") %>% 
+  rename(scientific_name = worms_name)
+  
+# Save spp list for DBEM (n = 45)
+CpawSppList <- nsb_species %>% 
+  left_join(dbem_species,
+            by = "scientific_name") %>% 
+  select(taxon_key) %>% 
+  filter(!is.na(taxon_key))
 
 # Create index
-name_spp_list <- my_path("D","species","CpawSppList10.txt")
+name_spp_list <- my_path("D","species","CpawSppList12.txt")
 write.table(CpawSppList, file=name_spp_list, sep="\t", col.names = F, row.names = F)
 
+# Note CpawSppList12 is the most recent species list to run ONLY with species data
 
 ```
 
 ## Genus matching
 
-There are some species of interest taht do not have species data information to run the DBEM with. For these species we will use an average of genus
+There are some species of interest that do not have species data information to run the DBEM with. For these species we will use an average of genus
 
 
 ```{r}
 
 # Match species with missing data with genus
-missing_s <- my_path("D","Species",name ="updated_species.csv", read = T) %>%
-  select(taxon_name=scientific_name,correct_name,genus = genus_other) %>% 
-  left_join(my_data("dbem_species"),
-            by = c("taxon_name","genus")) %>% 
+missing_s <- my_path("D","species", "nsb_updated_species.csv", read = T) %>%
+  select(scientific_name, genus_other) %>% 
+  left_join(dbem_species,
+            by = c("scientific_name")
+  ) %>% 
   filter(is.na(taxon_key)) %>% 
-  select(scientific_name = taxon_name, genus) %>% 
+  select(scientific_name, genus = genus_other) %>% 
   left_join(my_data("dbem_species"),
             by = "genus") %>% 
   select(scientific_name,genus,taxon_sub = taxon_name,taxon_key)
-
 
 # Save data
 write_csv(
@@ -376,28 +362,30 @@ write_csv(
 )
 
 
-# Get species with missing data
+# Get species that will use substitute genus data (n = 34)
 species_to_sub  <- missing_s %>% 
   filter(!is.na(taxon_key)) %>% 
   group_by(scientific_name) %>% 
   tally() 
 
-# Still some species missing
+# Still some species missing data even at the genus level (n = 63)
 missing_g <- missing_s %>% 
   filter(is.na(taxon_key)) %>% 
   group_by(scientific_name) %>% 
   tally() 
 
-# Full list
-spp_data_source <- my_path("D","Species",name ="updated_species.csv", read = T) %>%
+
+# Full list of species and their data sources
+spp_data_source <- my_path("D","Species",name ="nsb_updated_species.csv", read = T) %>%
   mutate(
     data_source = ifelse(scientific_name %in% species_to_sub$scientific_name, "genus",
-                         ifelse(scientific_name %in% missin_g$scientific_name, "no data","species"
+                         ifelse(scientific_name %in% missing_g$scientific_name, "no data",
+                                "species"
                          )
     )
   )
 
-# Save species
+# Save species data
 write_csv(
   spp_data_source,
   my_path("D","Species",name ="species_data_sources.csv", read = F)

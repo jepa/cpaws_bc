@@ -315,11 +315,56 @@ write.table(dbem_grid_index, file=name, sep="\t", col.names = F, row.names = F)
 ```{r}
 # Load updated species list by Colette
 # Note these species have been crossreff. with the WORMS database for taxonomy
-nsb_species <- my_path("D","species", "nsb_updated_species.csv", read = T)
+nsb_species <- my_path("D","species", "nsb_updated_species.csv", read = T) %>% 
+  # manual fix wrong name
+  mutate(
+    correct_name = ifelse(scientific_name =="Raja rhina","Beringraja rhina",correct_name),
+    genus_other = ifelse(scientific_name =="Raja rhina","Beringraja",genus_other),
+    correct_name = ifelse(scientific_name =="Raja binoculata","Beringraja binoculata",correct_name),
+    genus_other = ifelse(scientific_name =="Raja binoculata","Beringraja",genus_other),
+    correct_name = ifelse(scientific_name =="Theragra chalcogramma","Gadus chalcogrammus",correct_name),
+  )
 
 # Load DBEM species list
-dbem_species <- my_data("dbem_species") %>% 
-  rename(scientific_name = worms_name)
+dbem_species <- my_data("dbem_species")
+
+# SAU Species list 
+sau_spp <- my_data("sau_species")
+
+sau_dbem <- sau_spp %>% 
+  filter(taxon_key %in% dbem_species$taxon_key)
+
+# Initialize an empty list to store the results
+all_results <- list()
+# List of taxon to run 
+taxon_list <- sau_dbem$taxon_name  
+
+# Process in batches 'cus function does not like more than 50 species
+for (i in seq(1, length(taxon_list), by = 50)) {
+  batch <- taxon_list[i:min(i + 50 - 1, length(taxon_list))]
+  results <- wm_records_names(batch)
+  all_results <- append(all_results, results)
+}
+
+# Re order dataset
+alphaid <- dplyr::bind_rows(all_results) %>%
+  dplyr::select(taxon_name = scientificname, status, aphia_id = valid_AphiaID,worms_name = valid_name) %>% 
+  left_join(dbem_species,
+            by = "taxon_name",
+            relationship = "many-to-many") 
+
+
+dbem_worms <- alphaid %>% 
+  select(dbem_name = taxon_name,
+         taxon_key,
+         status,
+         worms_name,
+         aphia_id,
+         genus,
+         common_name)
+  
+
+
   
 # Save spp list for DBEM (n = 45)
 CpawSppList <- nsb_species %>% 
@@ -343,44 +388,53 @@ There are some species of interest that do not have species data information to 
 
 ```{r}
 
-# Match species with missing data with genus
-missing_s <- my_path("D","species", "nsb_updated_species.csv", read = T) %>%
-  select(scientific_name, genus_other) %>% 
-  left_join(dbem_species,
-            by = c("scientific_name")
+# Get missing species
+# Merge wqith nsb_species
+
+merged_nsb_species <- nsb_species %>% 
+  select(worms_name = correct_name) %>% 
+  mutate(
+    list = "nsb"
   ) %>% 
-  filter(is.na(taxon_key)) %>% 
-  select(scientific_name, genus = genus_other) %>% 
-  left_join(my_data("dbem_species"),
-            by = "genus") %>% 
-  select(scientific_name,genus,taxon_sub = taxon_name,taxon_key)
+  left_join(dbem_worms) %>% 
+  select(-status)
 
-# Save data
-write_csv(
-  missing_s %>% filter(!is.na(taxon_key)),
-  my_path("D","Species",name ="species_to_genus_sub.csv", read = F)
-)
+# Get DBEM modelled species 
+dbem_model_spp <- merged_nsb_species %>% 
+  filter(!is.na(dbem_name)) %>%
+  distinct(taxon_key, .keep_all = TRUE)
 
+nrow(dbem_model_spp) #(n = 44)
 
-# Get species that will use substitute genus data (n = 34)
-species_to_sub  <- missing_s %>% 
-  filter(!is.na(taxon_key)) %>% 
-  group_by(scientific_name) %>% 
-  tally() 
+# Get DBEM missing species (n = 94)
+missing_s <- merged_nsb_species %>% 
+  filter(is.na(dbem_name)) %>% 
+  select(worms_name) %>% 
+  left_join(nsb_species %>% rename(worms_name = correct_name, dbem_name = scientific_name)) %>%
+  distinct(worms_name, .keep_all = TRUE)
 
-# Still some species missing data even at the genus level (n = 63)
-missing_g <- missing_s %>% 
-  filter(is.na(taxon_key)) %>% 
-  group_by(scientific_name) %>% 
-  tally() 
+# Get species that will be substituted by genus data 
+genus_sub  <- missing_s %>%
+  filter(genus_other %in% alphaid$genus) %>%
+  distinct(worms_name, .keep_all = TRUE)
+
+nrow(genus_sub) #(n = 32)
+
+# Get the species used to sub each genus (n = 46)
+species_to_sub  <- genus_sub %>%
+  select(genus = genus_other) %>% 
+  left_join(alphaid,
+             by = "genus") %>%
+  distinct(taxon_key, .keep_all = TRUE)
+
 
 
 # Full list of species and their data sources
-spp_data_source <- my_path("D","Species",name ="nsb_updated_species.csv", read = T) %>%
+spp_data_source <- nsb_species %>%
   mutate(
-    data_source = ifelse(scientific_name %in% species_to_sub$scientific_name, "genus",
-                         ifelse(scientific_name %in% missing_g$scientific_name, "no data",
-                                "species"
+    data_source = ifelse(correct_name %in% dbem_model_spp$worms_name, "species",
+                         ifelse(scientific_name %in% genus_sub$worms_name, "genus",
+                                "no_data"
                          )
     )
   )

@@ -42,6 +42,15 @@ taxon_list <- my_path("D","Species",name ="nsb_updated_species.csv", read = T) %
   left_join(my_data("dbem_species")) %>% 
   filter(!is.na(taxon_key)) # remove species not modeled
 
+# manually include herring nor dungeness crab
+dbem_species <- my_data("dbem_species") %>% 
+  filter(taxon_key %in% c(690115,601520))
+
+
+taxon_list <- taxon_list %>% 
+  bind_rows(dbem_species)
+
+
 # Get MPA sf
 suppressMessages(
   bs_sf <- st_read(my_path("D","Spatial/draft_mpan","DRAFT_MAP_NETWORK_NAP_P3_IOAC_Sept2022.shp")) %>% 
@@ -407,6 +416,10 @@ plot_agg_per_species_mcp <- agg_per_species_mcp %>%
   ) +
   facet_wrap(~common_name, scales = "free") +
   theme_classic()+
+  labs(
+    x = "Year",
+    y = "Total MCP within study region"
+  )
   theme(
   text = element_text(size = 20)  # Set base text size
 ) + 
@@ -857,5 +870,45 @@ print(grid_diff_plot_mcp)
 
 ```
 
+
+# Salmon 
+
+- One question that came up was why chinook salmon 'reacts' differently to the other salmons - and I wasn't sure what to say. Is the life history data different
+
+Without diving into the data, overall salmonids are hard to model because of their andronomus life cycle and the reduced information we have of their ocean-stage habitat. That being said, Chinook spends the most amount of time in the ocean so, I believe is a result of the life history parameters that were used to model the distribution. Specifically, chinook salmon has the lowest *Intrinsic R* rate (0.114) and the largest *Linf* (153.3), they also have the shallower max depth (200 m) and the smallest VBonK (0.15).
+
+```{r get_salmon_lif_history}
+
+salmons <- dbem_species %>% 
+  filter(str_detect(taxon_name,"Oncorhynchus"),
+         str_detect(comon_name,"salmon"),
+         common_name != "Masu salmon")
+
+for(i in 1:5){
+  
+  file <- paste0(salmons$taxon_key[i],".txt")
+  
+  path_read <- my_path("G","Species/TaxonDataC/",file)
+  
+  partial <- read_delim(path_read,
+                        delim = "\t", escape_double = FALSE, 
+                        col_names = FALSE, trim_ws = TRUE) %>% 
+    mutate(taxon_key = salmons$taxon_key[i]) %>% 
+    slice(-1,-2)
+  
+  if(i == 1){
+    final <- partial
+  }else{
+    final <- bind_rows(partial,final)
+  }
+  
+}
+
+
+final %>% 
+  left_join(dbem_species) %>% 
+  spread(X1,X2) %>% 
+  select(-genus,-species)
+```
 
 

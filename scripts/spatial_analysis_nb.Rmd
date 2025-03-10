@@ -37,7 +37,7 @@ select <- dplyr::select
 ```{r load_data, eval = T}
 
 # Get modelled species DF
-taxon_list <- my_path("D","Species",name ="updated_species.csv", read = T) %>% 
+taxon_list <- my_path("D","Species",name ="nsb_updated_species.csv", read = T) %>% 
   select(taxon_name = scientific_name) %>% 
   left_join(my_data("dbem_species")) %>% 
   filter(!is.na(taxon_key)) # remove species not modeled
@@ -325,7 +325,9 @@ write_csv(agg_per_species_mcp, my_path("R","tables","agg_per_species_mcp.csv"))
 
 Figure showing the total MCP (raw DBEM outputs) per species over the years across the whole BC. EEZ. 
 
-```{r mcp_total, eval = T, echo = T, fig.width = 20, fig.height = 15, message=F,warning=F}
+##### Facet figure
+
+```{r mcp_total_facet, eval = T, echo = T, fig.width = 20, fig.height = 15, message=F,warning=F}
 
 # read data
 agg_per_species_mcp <- my_path("R","tables","agg_per_species_mcp.csv",read = T) %>% 
@@ -356,6 +358,127 @@ ggsave(my_path("R","figures","agg_per_species_mcp.png"),
 print(plot_agg_per_species_mcp)
 
 ```
+
+
+##### Facet per group
+
+```{r mcp_total_group, eval = T, echo = T, fig.width = 20, fig.height = 15, message=F,warning=F}
+
+# read data
+agg_per_species_mcp <- my_path("R","tables","agg_per_species_mcp.csv",read = T) %>% 
+  left_join(taxon_list)
+
+# Taxa where MPA and no MPA runs are the same
+same_taxa <- c(600142,600243,600252,600255,600256,600502,601477,604009,604238)
+
+# Groups
+average_sepration <- agg_per_species_mcp %>% 
+  group_by(run,taxon_key,taxon_name,common_name) %>% 
+  summarise(
+    mean_year = mean(sum,na.rm = T)
+  ) %>% 
+  spread(run,mean_year) %>% 
+  mutate(
+    flag = ifelse(mpa > no_mpa, "MPA",
+                  ifelse(taxon_key %in% same_taxa,"No difference",
+                         "No MPA")
+    )
+  ) %>% 
+  select(taxon_key,flag) %>% 
+  filter(taxon_key != 601732)
+
+
+# Raw data
+
+for(i in 1:3){
+  
+  value <- c("MPA","No MPA","No difference")[i]
+
+plot_agg_per_species_mcp <- agg_per_species_mcp %>% 
+  left_join(average_sepration) %>% 
+  filter(flag == value) %>% 
+  ggplot() +
+  geom_line(
+    aes(
+      x = as.numeric(year),
+      y = sum,
+      col = run
+    )
+  ) +
+  facet_wrap(~common_name, scales = "free") +
+  theme_classic()+
+  theme(
+  text = element_text(size = 20)  # Set base text size
+) + 
+  ggtitle(paste0("Species where the average MCP across all years is higher with ",value))
+
+
+ggsave(my_path("R","figures",paste0("aagg",value,"_per_species_mcp.png")),
+       plot = plot_agg_per_species_mcp,
+       width = 20,
+       height = 15)
+
+}
+
+
+
+# 601732 (remove)
+
+```
+
+
+##### Per species figure
+
+```{r mcp_total_per_spp, eval = T, echo = T, fig.width = 20, fig.height = 15, message=F,warning=F}
+
+# read data
+agg_per_species_mcp <- my_path("R","tables","agg_per_species_mcp.csv",read = T) %>% 
+  left_join(taxon_list)
+
+
+
+
+for(i in 1:length(unique(taxon_list$taxon_name))){
+  
+  taxon <- unique(taxon_list$taxon_name)[i]
+  taxon_name <- unique(taxon_list$common_name)[i]
+  
+  plot_agg_per_species_mcp <- agg_per_species_mcp %>% 
+    filter(taxon_name == taxon) %>% 
+    ggplot() +
+    geom_line(
+      aes(
+        x = as.numeric(year),
+        y = sum,
+        col = run
+      )
+    ) +
+    facet_wrap(~common_name, scales = "free") +
+    theme_classic()+
+    labs(x = "Year",
+         y = "Total MCP") +
+    theme(
+      text = element_text(size = 10)  # Set base text size
+    ) +
+    ggtitle(paste0("Projected MCP for ",taxon))
+  
+  
+  png_name <- paste0(taxon_name,".png")
+  
+  ggsave(my_path("R","species_mcp",png_name),
+       plot = plot_agg_per_species_mcp,
+       width = 7,
+       height = 5)
+
+
+
+}
+
+
+
+
+```
+
 
 #### Difference in MCP
 

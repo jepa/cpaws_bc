@@ -50,7 +50,7 @@ There are (at least) three ways to reallocate fishing effort as it is in the DBE
 ```{r species_list, eval = F, echo = F}
 
 # NSB species list provided by Colette
-nsb_species <- my_path("D","Species","updated_species.csv", read = T) 
+nsb_species <- my_path("D","Species","nsb_updated_species.csv", read = T) 
 
 # DBEM species
 dbem_species <- my_path("Spp",name ="dbem_spp_list.csv", read = T)
@@ -285,14 +285,17 @@ dbem_grid <- my_data("dbem_coords") %>%
 
 # Map it to make sure it works
 dbem_grid %>% 
-  filter(lat > 40,
-         lon < -100) %>% 
+  filter(lat > 49,
+         lat < 60,
+         lon < -120,
+         lon > -140) %>% 
   ggplot() +
   geom_tile(
     aes(
       x = lon,
       y = lat,
-      fill = log10(fe_prop)
+      fill = fe_prop
+      # fill = log10(fe_prop)
     )
   ) +
   scale_fill_viridis_b()
@@ -309,6 +312,102 @@ write.table(dbem_grid_index, file=name, sep="\t", col.names = F, row.names = F)
 
 
 ```
+
+# Scenarios building
+
+Scenarios should be:
+- Close all MPAs 100% - so 0 fishing mortality
+- Reduce fishing mortality to 25%
+- Reduce fishing mortality to 50% 
+- Reduce fishing mortality to 75%
+
+That way we can see what the differences are for each species and whether let's say reducing mortality a little bit ... or a lot makes a difference or not (to some extent we know that already by looking at the contrast between mpa and no_mpa scenarios) but still
+This way we move away from thinking about gear specific things...
+
+
+```{r}
+
+# Load DBEM grid
+dbem_grid <- my_data("dbem_coords")
+
+# Load MPA grid for CPAW
+mpa_grid <-
+  my_path("D","spatial","mpa_cpaw.txt", read = T,header =  F) %>%
+  rowid_to_column() %>% 
+  rename(f_mort = v1,
+         index = rowid) %>% 
+  mutate(
+    status = ifelse(f_mort == 1, "non-protected",
+                    ifelse(f_mort > 1, "surrounding","protected")
+                    )
+  )
+  # View()
+  # left_join(dbem_grid) %>% 
+  # filter(lat > 49,
+  #        lat < 60,
+  #        lon < -120,
+  #        lon > -140
+  #        ) %>% 
+  # ggplot() +
+  # geom_tile(
+  #   aes(
+  #     x = lon,
+  #     y = lat,
+  #     fill = status
+  #   )
+  # )
+
+
+```
+
+## Set scenarios
+
+```{r}
+
+scenarios_df <- mpa_grid %>% 
+  mutate(
+    scenario_25 = ifelse(status == "protected",0.25,f_mort),
+    scenario_50 = ifelse(status == "protected",0.5,f_mort),
+    scenario_75 = ifelse(status == "protected",0.75,f_mort),
+    scenario_100 = ifelse(status == "protected",0,f_mort)
+  )
+
+```
+
+## Plot
+
+```{r}
+
+scenarios_map <- scenarios_df %>% 
+  gather("scen","value",scenario_25:scenario_100) %>% 
+   left_join(dbem_grid) %>% 
+  filter(lat > 49,
+         lat < 60,
+         lon < -120,
+         lon > -140
+         ) %>%
+  ggplot() +
+  geom_tile(
+    aes(
+      x = lon,
+      y = lat,
+      fill = as.character(value),
+      color = as.character(value)
+    )
+  ) +
+  # geom_sf(data = mpan_sf, aes(), fill = NA, color = "white") +
+  facet_wrap(~scen) +
+  scale_fill_viridis_d("Fishing mortality (fraction)") +
+  scale_color_viridis_d("Fishing mortality (fraction)")
+
+ggsave(
+       "scenarios_map.png",
+       scenarios_map
+       )
+
+```
+
+
 
 # Species selection
 

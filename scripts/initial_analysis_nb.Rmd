@@ -366,11 +366,15 @@ mpa_grid <-
 
 scenarios_df <- mpa_grid %>% 
   mutate(
-    scenario_25 = ifelse(status == "protected",0.25,f_mort),
-    scenario_50 = ifelse(status == "protected",0.5,f_mort),
-    scenario_75 = ifelse(status == "protected",0.75,f_mort),
-    scenario_100 = ifelse(status == "protected",0,f_mort)
+    scenario_25 = ifelse(status == "protected",f_mort*0.25,f_mort),
+    scenario_50 = ifelse(status == "protected",f_mort*0.5,f_mort),
+    scenario_75 = ifelse(status == "protected",f_mort*0.75,f_mort),
+    scenario_100 = ifelse(status == "protected",f_mort*0,f_mort)
   )
+
+scenarios_df %>% 
+  filter(status == "protected") %>% 
+  View()
 
 ```
 

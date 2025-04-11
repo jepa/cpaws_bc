@@ -366,15 +366,13 @@ mpa_grid <-
 
 scenarios_df <- mpa_grid %>% 
   mutate(
-    scenario_25 = ifelse(status == "protected",f_mort*0.25,f_mort),
-    scenario_50 = ifelse(status == "protected",f_mort*0.5,f_mort),
-    scenario_75 = ifelse(status == "protected",f_mort*0.75,f_mort),
-    scenario_100 = ifelse(status == "protected",f_mort*0,f_mort)
+    cpaws_25 = ifelse(status == "protected",f_mort*0.25,f_mort),
+    cpaws_50 = ifelse(status == "protected",f_mort*0.5,f_mort),
+    cpaws_75 = ifelse(status == "protected",f_mort*0.75,f_mort),
+    cpaws_100 = ifelse(status == "protected",f_mort*0,f_mort)
   )
 
-scenarios_df %>% 
-  filter(status == "protected") %>% 
-  View()
+
 
 ```
 
@@ -383,7 +381,7 @@ scenarios_df %>%
 ```{r}
 
 scenarios_map <- scenarios_df %>% 
-  gather("scen","value",scenario_25:scenario_100) %>% 
+  gather("scen","value",cpaws_25:cpaws_100) %>% 
    left_join(dbem_grid) %>% 
   filter(lat > 49,
          lat < 60,
@@ -395,20 +393,51 @@ scenarios_map <- scenarios_df %>%
     aes(
       x = lon,
       y = lat,
-      fill = as.character(value),
-      color = as.character(value)
+      fill = value,
+      color = value
     )
   ) +
   # geom_sf(data = mpan_sf, aes(), fill = NA, color = "white") +
   facet_wrap(~scen) +
-  scale_fill_viridis_d("Fishing mortality (fraction)") +
-  scale_color_viridis_d("Fishing mortality (fraction)")
+  scale_fill_viridis_c("Fishing mortality (fraction)") +
+  scale_color_viridis_c("Fishing mortality (fraction)")
 
 ggsave(
-       "scenarios_map.png",
+       my_path("D","spatial/scenarios_compute_canada","scenarios_map.png"),
        scenarios_map
        )
 
+
+my_mpa_cedar <- function(data,column_name,path,scen_name){
+  
+  
+  file_name <- paste0(scen_name,".txt")
+  
+  data %>%
+    select(any_of(column_name)) %>%
+    write.table(file = paste0(path,"/",file_name),
+                sep="\t", col.names = F, row.names = F)
+  
+  output <- paste0("Created MPA scenario in path: ",path,scen_name)
+  
+  return(output)
+  
+  
+}
+
+
+scen <- names(scenarios_df)[4:8]
+
+for(i in 1:4){
+  
+  my_mpa_cedar(
+    data = scenarios_df,
+    column_name = scen[i],
+    path = my_path("D","spatial/scenarios_compute_canada"),
+    scen_name = scen[i]
+  )
+  
+}
 ```
 
 

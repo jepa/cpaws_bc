@@ -421,15 +421,15 @@ plot_agg_per_species_mcp <- agg_per_species_mcp %>%
     y = "Total MCP within study region"
   )
   theme(
-  text = element_text(size = 20)  # Set base text size
+  text = element_text(size = 10)  # Set base text size
 ) + 
   ggtitle(paste0("Species where the average MCP across all years is higher with ",value))
 
 
 ggsave(my_path("R","figures",paste0("aagg",value,"_per_species_mcp.png")),
        plot = plot_agg_per_species_mcp,
-       width = 20,
-       height = 15)
+       width = 10,
+       height = 8)
 
 }
 
@@ -905,10 +905,11 @@ for(i in 1:5){
 }
 
 
-final %>% 
-  left_join(dbem_species) %>% 
-  spread(X1,X2) %>% 
-  select(-genus,-species)
+# final %>% 
+#   left_join(dbem_species) %>% 
+#   spread(X1,X2) %>% 
+#   select(-genus,-species) %>% 
+#   write_csv("salmon_life_history.csv")
 ```
 
 

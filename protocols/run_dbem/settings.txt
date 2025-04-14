@@ -1,10 +1,10 @@
- SppNo            37
+ SppNo           37
  CCSc C6GFDL26                                
  SSP SSP126                                  
  rsfile CpawSppList         
- rpath c6gfdl85f1cpaw25
+ rpath c6gfdl85f1cpaws75             
  tpath TaxonDataC0                   
  ifile 10                  
  FHS    1.00
  FEEZ    1.00
- MPApath cpaw_25
+ MPApath cpaws_75                                

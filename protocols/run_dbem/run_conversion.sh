@@ -3,12 +3,13 @@
 #SBATCH --account=def-wailung                                                   
 #SBATCH --nodes=1 # number of node MUST be 1                                    
 #SBATCH --ntasks=1                                                              
-#SBATCH --cpus-per-task=1        # number of processes                          
-#SBATCH --mem=4G                                                                
+#SBATCH --cpus-per-task=6        # number of processes                          
+#SBATCH --mem=8G                                                                
 #SBATCH -t 00-00:30:00                                                         
 #SBATCH --mail-user=j.palacios@oceans.ubc.ca                                    
 #SBATCH --mail-type=ALL                                                         
-#SBATCH --output=/home/jepa/projects/def-wailung/jepa/cpaws_bc/scripts/slurm_out/con_slurm_%j.out # Specify the full path with the desired file name prefix
+#SBATCH --output=/home/jepa/projects/def-wailung/jepa/cpaws_bc/protocols/run_dbem/slurm_out/conver_slurm_%j.out # Specify the full path with the desired file name prefix
+#SBATCH --error=/home/jepa/projects/def-wailung/jepa/cpaws_bc/protocols/run_dbem/slurm_out/conver_slurm_%j.err # Specify the full path with the desired file name prefix
 
 
 # ---------------------------------------------------------------------         

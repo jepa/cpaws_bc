@@ -8,16 +8,27 @@ pr_chg_fx <- function(paths, mpa = T){
     
     load(paths)  
     
+    #Global variables
+    esm = str_sub(paths,58,61)
+    ssp = ifelse(str_sub(paths,62,63) == 26,"ssp126","ssp585")
+    scen = ifelse(str_sub(paths,71,72) == 10,"100%",paste0(str_sub(paths,71,72),"%"))
+    
     # Load Abd or MCP data
     
     if(mpa == T){
-      data <- as.data.frame(data)
-      colnames(data) <- seq(1951,2100,1)
+      data <- as.data.frame(data) %>% 
+        rowid_to_column("index")
+      colnames(data) <- c("index",(seq(1851,2100,1)))
       if(str_detect(paths,"Abd") == T){
         variable <- "abd"
       }else{
         variable <- "mcp"
       }
+      
+      data <- data %>% 
+        select(index,`1951`:`2100`) 
+      
+      
     }else{
       if(exists("sppabdfnl") == T){
         data <- as.data.frame(sppabdfnl)
@@ -37,21 +48,22 @@ pr_chg_fx <- function(paths, mpa = T){
     if(mpa == T){
       
       info <- taxon_list %>% 
-        filter(taxon_key %in% str_sub(paths,91,96)) 
+        filter(taxon_key %in% str_sub(paths,75,80)) 
       
-      title <- unique(paste0("Percentage Change"," (",variable,") for ",info$common_name," (",info$taxon_name,") with MPA"))
+      title <- unique(paste0("Percentage Change"," (",variable,") for ",info$common_name," (",info$taxon_name,") under ",scen," protection (",esm,ssp,")"))
       
-      plot_name <- my_path("R",extra_path = "per_change_gfdl_126",paste0(unique(info$common_name),"_",variable,"_mpa.png")) 
+      extra = paste0("per_change_",esm,"_",ssp,"_",scen)
       
+      plot_name <- my_path("R",extra_path = extra,paste0(unique(info$common_name),"_",variable,"_mpa.png")) 
       
     }else{
       
       info <- taxon_list %>% 
-        filter(taxon_key %in% str_sub(paths,92,97)) 
+        filter(taxon_key %in% str_sub(paths,75,80)) 
       
       title <- unique(paste0("Percentage Change"," (",variable,") for ",info$common_name," (",info$taxon_name,")"))
       
-      plot_name <- my_path("R",extra_path = "per_change_gfdl_126",paste0(unique(info$common_name),"_",variable,".png")) 
+      plot_name <- my_path("R",extra_path = "per_change_gfdl_585",paste0(unique(info$common_name),"_",variable,".png")) 
       
     }
     
@@ -119,8 +131,8 @@ pr_chg_fx <- function(paths, mpa = T){
     
     ggsave(plot = bc_data,
            filename = str_to_lower(gsub(" ","_",plot_name)),
-           height = 4,
-           width = 8)
+           height = 5,
+           width = 9)
     
     print(plot_name)
     # Return a success message or result if needed

@@ -31,7 +31,9 @@ sf::sf_use_s2(use_s2 = FALSE)
 select <- dplyr::select
 ```
 
+# Overall
 
+This script analyzes 4 scenarios developed for the CPAWS projec on climate change in the Coast of British Columbia. The 4 scenarios were created in the script `initial_analysis_nb.Rmd` and they all reduce fishing mortality in the protected grid cells by 25%, 50%, 75% and 100% of $f/f_{msy}$ proportionally to the area of the grid cell that is covered by the MPA. This means that, for the 50% scenario, if an MPA covers 25% of a given protected grid cell, then, the actual reduction would be 12.5% (0.50-scenario × 0.25-area cover = 0.125 or 12.5%), instead of 50%.
 # Load data
 
 ```{r load_data, eval = T}
@@ -55,7 +57,8 @@ taxon_list <- taxon_list %>%
 suppressMessages(
   bs_sf <- st_read(my_path("D","Spatial/draft_mpan","DRAFT_MAP_NETWORK_NAP_P3_IOAC_Sept2022.shp")) %>% 
     # Remove the Z component for ease computation
-    st_zm(drop = TRUE)
+    st_zm(drop = TRUE) %>% 
+    st_simplify(preserveTopology = TRUE, dTolerance = 100)
 ) 
 st_crs(bs_sf)$epsg
 crs <- st_crs(bs_sf)
@@ -73,6 +76,8 @@ bc_grid <- my_data("sau_index") %>%
 
 ```
 
+
+
 # Plot maps per species
 
 
@@ -88,24 +93,31 @@ bc_grid <- my_data("sau_index") %>%
 
 # For non-mpa runs
 # Filter out paths from speceis that we are interested in
-dbem_no_mpa <- dbem_no_mpa[grep(paste(taxon_list$taxon_key, collapse = "|"), dbem_no_mpa)]
+# dbem_no_mpa <- dbem_no_mpa[grep(paste(taxon_list$taxon_key, collapse = "|"), dbem_no_mpa)]
 
-lapply(dbem_no_mpa, pr_chg_fx, mpa = F) # Multiple
+# lapply(dbem_no_mpa, pr_chg_fx, mpa = F) # Multiple
 
 
 
 # For MPA runs
+scenarios <- c(25,50,75,10)
+for(i in 1:3){
+  
+  
+dbem_mpa_data <- my_path("D",
+                         extra_path = paste0("dbem_runs/rdata/c6gfdl85f1cpaws",scenarios[i]),
+                         list_files = "paths",
+                         fn = T,
+                         system = "juliano")
 
-dbem_mpa_data <- my_path("R",
-                         extra_path = "raw/C6GFDL26F1CPAW/", #SSP126 for now
-                         list_files = "paths"
-)
 
 dbem_mpa_data <- dbem_mpa_data[grep(paste(taxon_list$taxon_key, collapse = "|"), dbem_mpa_data)]
 
 
 
 lapply(dbem_mpa_data, pr_chg_fx, mpa = T) # Multiple
+
+}
 
 
 ```

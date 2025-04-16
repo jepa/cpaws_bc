@@ -13,7 +13,7 @@
 
 
 Model=GFDL
-SSP=85
+SSP=26
 # Extract necessary data into TempSlurm
 Root=~/projects/def-wailung/Data/Climate/C6${Model}${SSP}_annual
 

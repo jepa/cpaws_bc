@@ -1,11 +1,9 @@
-Current working directory: /home/jepa/projects/def-wailung/jepa/cpaws_bc/scripts/run_dbem
-Starting run at: Wed 24 Jul 2024 02:22:10 PM PDT
 here() starts at /project/6006523/jepa/cpaws_bc
 ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
 ✔ dplyr     1.1.4     ✔ readr     2.1.5
 ✔ forcats   1.0.0     ✔ stringr   1.5.1
 ✔ ggplot2   3.5.1     ✔ tibble    3.2.1
-✔ lubridate 1.9.3     ✔ tidyr     1.3.1
+✔ lubridate 1.9.4     ✔ tidyr     1.3.1
 ✔ purrr     1.0.2     
 ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
 ✖ dplyr::filter() masks stats::filter()
@@ -21,27 +19,3 @@ The following objects are masked from ‘package:purrr’:
 
 Loading required package: iterators
 Loading required package: parallel
-[1] "1"
-[1] "1"
-[1] "C6GFDL26F1CPAW2"
-[1] "600240"
-[1] "Catch"
-[1] "C6GFDL26F1CPAW2"
-[1] "600243"
-[1] "Catch"
-[1] "C6GFDL26F1CPAW2"
-[1] "600309"
-[1] "Catch"
-[1] "C6GFDL26F1CPAW2"
-[1] "601520"
-[1] "Catch"
-[1] "C6GFDL26F1CPAW2"
-[1] "690115"
-[1] "Catch"
-[1] "C6GFDL26F1CPAW2"
-[1] "690285"
-[1] "Catch"
-[1] "C6GFDL26F1CPAW2"
-[1] "690658"
-[1] "Catch"
-NULL

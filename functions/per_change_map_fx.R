@@ -11,7 +11,7 @@ pr_chg_fx <- function(paths, mpa = T){
     #Global variables
     esm = str_sub(paths,58,61)
     ssp = ifelse(str_sub(paths,62,63) == 26,"ssp126","ssp585")
-    scen = ifelse(str_sub(paths,71,72) == 10,"100%",paste0(str_sub(paths,71,72),"%"))
+    scen = ifelse(str_sub(paths,71,72) == 10,"0",paste0(str_sub(paths,71,72)))
     
     # Load Abd or MCP data
     

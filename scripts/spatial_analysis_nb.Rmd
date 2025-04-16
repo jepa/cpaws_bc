@@ -514,7 +514,7 @@ ggsave(my_path("R","figures","time_diff_per_species_abd_gfdl85_scen.png"),
 
 ##### Relative to the no mpa run
 
-```{r relative_abd_fig, eval = T, fig.width=8, fig.height=7, message=F,warning=F}
+```{r relative_abd_fig_nompa, eval = T, fig.width=8, fig.height=7, message=F,warning=F}
 
 rel_diff <- abd_relative_df %>% 
   group_by(taxon_key,common_name,esm,ssp,scenario) %>%
@@ -554,9 +554,9 @@ print(rel_diff)
   
 ```
 
-##### Relative to the 100 scenario
+##### Relative to the 100 scenario (Delta delta)
 
-```{r relative_abd_fig, eval = T, fig.width=8, fig.height=7, message=F,warning=F}
+```{r relative_abd_fig_deltascen, eval = T, fig.width=8, fig.height=7, message=F,warning=F}
 
 delta_delta_scen <-
   abd_relative_df %>% 
@@ -1220,6 +1220,8 @@ agg_per_species_abd <- my_path("R","tables","agg_per_species_abd_gfdl85.csv",rea
 
 ```
 
+#### Difference in abundance 
+
 ```{r}
 agg_per_species_abd %>% 
   filter(run == "mpa") %>% 
@@ -1248,3 +1250,160 @@ ggsave(my_path("R","figures/totals","agg_total_abd_gfdl85.png"),
        height = 7)
 ```
 
+
+
+```{r diffabdscenarios_totals, eval = T, fig.width=20, fig.height=15, message=F, warning = F}
+
+# Raw data
+
+  agg_per_species_abd %>% 
+  filter(run == "mpa") %>% 
+  spread(scenario,total_value) %>% 
+  mutate(
+    d_25 = my_chng(`0`,`25`,limit = 100),
+    d_50 = my_chng(`0`,`50`,limit = 100),
+    d_75 = my_chng(`0`,`75`,limit = 100)
+  ) %>% 
+  gather("delta","delta_value",d_25:d_75) %>% 
+  group_by(esm,ssp,delta) %>%
+  # arrange(year)
+  mutate(
+    run_avg = rollmean(delta_value, k = 10, align = "right", fill = NA)
+  ) %>% 
+  # View()
+  ggplot() +
+  geom_line(
+    aes(
+      x = as.numeric(year),
+      y = delta_value,
+      color = as.character(delta)
+    )
+  ) +
+  # geom_line(
+  #   aes(
+  #     x = as.numeric(year),
+  #     y = run_avg,
+  #     group = taxon_key,
+  #     color = as.character(delta)
+  #   )
+  # ) +
+  scale_color_viridis_d("F Scenario") +
+  labs(
+    x = "Year",
+    y = "Percentage change relative to F0 scenario"
+  ) +
+  theme_classic()+
+  theme(
+  text = element_text(size = 20)  # Set base text size
+  )
+
+
+ggsave(my_path("R","figures/totals/","scen_abs_diff_total_abd_gfdl85.png"),
+       plot = last_plot(),
+       width = 10,
+       height = 7)
+
+
+```
+
+#### Relative difference
+
+```{r relative_abd_tbl, eval = T, fig.width=8, fig.height=7, message=F,warning=F}
+# Raw data
+abd_relative_df <- agg_per_species_abd %>% 
+  mutate(
+    time_frame = ifelse(year > 1995 & year < 2014, "historic",
+                        ifelse(year > 2041 & year < 2060, "early_2050",
+                               ifelse(year > 2081 & year < 2100, "end_2100",NA)
+                        )
+    )
+  ) %>% 
+  filter(!is.na(time_frame)) %>% 
+  group_by(run,time_frame, esm,ssp,scenario) %>%
+  summarise(nat_mean_sum = round(mean(total_value,na.rm = T))) %>% 
+  group_by(esm,ssp,scenario) %>% 
+  spread(time_frame,nat_mean_sum) %>% 
+  mutate(early_2050 = my_chng(`historic`,`early_2050`,limit = 100),
+         end_2100 = my_chng(`historic`,`end_2100`,limit = 100)
+  )
+
+
+print(abd_relative_df %>% select(1:3,historic,everything()) %>% filter(common_name == "Capelin"))
+
+```
+
+```{r}
+
+abd_relative_df %>% 
+  gather("time_frame","percentage_difference",early_2050:end_2100) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = time_frame,
+      y = percentage_difference,
+      fill = as.character(scenario)
+    ),
+    stat = "identity",
+    position = "dodge"
+  ) +
+  scale_fill_viridis_d("F scenario") +
+  # coord_flip() +
+  labs(x = "Common name",
+       y = "Percentage change relative to historical values") +
+  theme_classic() +
+  theme(
+    text = element_text(size = 16)  # Set base text size
+  ) 
+
+
+ggsave(my_path("R","figures/totals","time_diff_agg_abd_gfdl85_scen.png"),
+       plot = last_plot(),
+       width = 10,
+       height = 8)
+
+
+```
+
+##### Relative to the 100 scenario (Delta delta)
+
+```{r relative_abd_fig_total, eval = T, fig.width=8, fig.height=7, message=F,warning=F}
+
+abd_relative_df %>% 
+  filter(run == "mpa") %>% 
+  select(-historic) %>% 
+  gather("time_frame","percentage_difference",early_2050:end_2100) %>% 
+  spread(scenario,percentage_difference) %>% 
+  mutate(
+    d_25 = my_chng(`0`,`25`),
+    d_50 = my_chng(`0`,`50`),
+    d_75 = my_chng(`0`,`75`)
+  ) %>% 
+  gather("delta","delta_value",d_25:d_75) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = delta,
+      y = delta_value,
+      fill = as.character(delta)
+    ),
+    stat = "identity",
+    position = "dodge"
+  ) +
+  scale_fill_viridis_d("F scenario") +
+  coord_flip() +
+  labs(x = "Scenario",
+       y = "Difference in climate change impacts between F scenarios\nrelative to 100% protection (%)") +
+  theme_classic() +
+  theme(
+    text = element_text(size = 16)  # Set base text size
+  ) +
+  facet_wrap(~time_frame)
+
+ggsave(my_path("R","figures/totals","delta_delta_total_abd_gfdl85_scen.png"),
+       plot = last_plot(),
+       width = 8,
+       height = 4)
+
+
+  
+```

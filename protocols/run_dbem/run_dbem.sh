@@ -4,7 +4,7 @@
 #SBATCH -N 1 	#Nodes
 #SBATCH -N 1	#CPU count
 #SBATCH --mem-per-cpu=1500M
-#SBATCH -t 01-00:00:00
+#SBATCH -t 00-10:00:00
 #SBATCH --mail-user=jepa88@gmail.com
 #SBATCH --mail-type=ALL
 #SBATCH --array=10-10
@@ -13,7 +13,7 @@
 
 
 Model=GFDL
-SSP=26
+SSP=85
 # Extract necessary data into TempSlurm
 Root=~/projects/def-wailung/Data/Climate/C6${Model}${SSP}_annual
 

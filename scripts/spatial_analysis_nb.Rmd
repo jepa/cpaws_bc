@@ -239,13 +239,13 @@ Overall, it is expected that the MPA runs will have more abundance as fishing is
 
 ran_taxa <- list.files("/Volumes/Enterprise/Data/cpaws_bc/Data/dbem_runs/txt/c6gfdl85f1cpaws25/")
 
-variable = "Catch"
+variable = "Abd"
 
 # For MPA runs
 scenarios <- c(25,50,75,10)
 
 
-agg_all_scen <- function(scenario){
+agg_all_scen <- function(scenario,ssp,grid){
   
   
   dbem_paths <- taxon_list %>% 
@@ -253,28 +253,31 @@ agg_all_scen <- function(scenario){
     distinct() %>% 
     select(taxon_key) %>% 
     mutate(
-      dbem_no_mpa_path = paste0("~/Library/CloudStorage/OneDrive-UBC/Data/dbem/dbem_cmip6/r_data/C6GFDL85F1_t2/",taxon_key,variable,".RData"),
-      dbem_mpa_path = paste0("/Volumes/Enterprise/Data/cpaws_bc/Data/dbem_runs/rdata/c6gfdl85f1cpaws",scenario,"/",taxon_key,variable,".RData")
+      dbem_no_mpa_path = paste0("~/Library/CloudStorage/OneDrive-UBC/Data/dbem/dbem_cmip6/r_data/C6GFDL",ssp,"F1_t2/",taxon_key,variable,".RData"),
+      dbem_mpa_path = paste0("/Volumes/Enterprise/Data/cpaws_bc/Data/dbem_runs/rdata/c6gfdl",ssp,"f1cpaws",scenario,"/",taxon_key,variable,".RData")
     )
   
   
   # Call function
   
-  agg_per_species_abd <-agg_per_spp_abd(dbem_paths)
+  agg_per_species_abd <-agg_per_spp_abd(dbem_paths, grid = grid)
   
   return(agg_per_species_abd)
   
 }
 
 agg_per_species_abd_scen <- bind_rows(
-  lapply(scenarios, agg_all_scen)
+  lapply(scenarios, agg_all_scen, ssp = 26)
   
 )
 
 
 unique(agg_per_species_abd_scen$scenario)
+unique(agg_per_species_abd_scen$ssp)
+unique(agg_per_species_abd_scen$variable)
+unique(agg_per_species_abd_scen$run)
 
-write_csv(agg_per_species_abd_scen, my_path("R","tables","agg_per_species_abd_gfdl85.csv"))
+write_csv(agg_per_species_abd_scen, my_path("R","tables","species_abd_gfdl26.csv"))
 
 ```
 
@@ -285,7 +288,7 @@ Figure showing the total abundance (raw DBEM outputs) per species over the years
 ```{r total_abd, eval = T, fig.width=20, fig.height=15, message=F,warning=F}
 
 # read data
-agg_per_species_abd <- my_path("R","tables","agg_per_species_abd_gfdl85.csv",read = T) %>% 
+agg_per_species_abd <- my_path("R","tables","species_abd_gfdl26.csv",read = T) %>% 
   mutate(scenario = ifelse(scenario == 100,0,scenario)) %>% 
   left_join(taxon_list,
             by = ("taxon_key")
@@ -310,7 +313,7 @@ plot_agg_per_species_abd <- agg_per_species_abd_scen %>%
   text = element_text(size = 20)  # Set base text size
 )
 
-ggsave(my_path("R","figures","agg_per_species_abd_gfdl85.png"),
+ggsave(my_path("R","figures","spp_abd_gfdl26.png"),
        plot = plot_agg_per_species_abd,
        width = 20,
        height = 15)
@@ -362,7 +365,7 @@ diff_plot <-
     aes(
       x = as.numeric(year),
       y = run_avg,
-      group = taxon_key,
+      # group = taxon_key,
       color = as.character(scenario)
     )
   ) +
@@ -370,10 +373,10 @@ diff_plot <-
   theme(
   text = element_text(size = 20)  # Set base text size
   ) +
-  facet_grid(~common_name, scales = "free")
+  facet_wrap(~common_name, scales = "free")
 
 
-ggsave(my_path("R","figures","abs_diff_per_species_abd.png"),
+ggsave(my_path("R","figures","spp_abs_diff_per_scen_gfdl26.png"),
        plot = diff_plot,
        width = 20,
        height = 15)
@@ -394,9 +397,9 @@ diff_plot <-
   select(-variable,-mean) %>% 
   spread(scenario,sum) %>% 
   mutate(
-    d_25 = my_chng(`100`,`25`,limit = 100),
-    d_50 = my_chng(`100`,`50`,limit = 100),
-    d_75 = my_chng(`100`,`75`,limit = 100)
+    d_25 = my_chng(`0`,`25`,limit = 100),
+    d_50 = my_chng(`0`,`50`,limit = 100),
+    d_75 = my_chng(`0`,`75`,limit = 100)
   ) %>% 
   gather("delta","delta_value",d_25:d_75) %>% 
   group_by(taxon_key,common_name,esm,ssp,delta) %>%
@@ -428,7 +431,7 @@ diff_plot <-
   facet_wrap(~common_name, scales = "free")
 
 
-ggsave(my_path("R","figures","scen_abs_diff_per_species_abd_gfdl85.png"),
+ggsave(my_path("R","figures","scen_abs_diff_per_species_abd_gfdl26.png"),
        plot = diff_plot,
        width = 20,
        height = 15)
@@ -503,7 +506,7 @@ abd_relative_df %>%
   facet_wrap(~time_frame)
 
 
-ggsave(my_path("R","figures","time_diff_per_species_abd_gfdl85_scen.png"),
+ggsave(my_path("R","figures","spp_time_diff_abd_gfdl85_scen.png"),
        plot = last_plot(),
        width = 10,
        height = 8)
@@ -570,7 +573,12 @@ delta_delta_scen <-
     d_50 = my_chng(`0`,`50`),
     d_75 = my_chng(`0`,`75`)
   ) %>% 
-  gather("delta","delta_value",d_25:d_75)
+  gather("delta","delta_value",d_25:d_75) %>% 
+  mutate(
+    delta_value = ifelse(delta_value > 100,100,
+                         ifelse(delta_value < -100,-100,delta_value))
+    
+  )
 
 delta_delta_scen %>% 
   ggplot() +
@@ -593,7 +601,7 @@ delta_delta_scen %>%
   ) +
   facet_wrap(~time_frame)
 
-ggsave(my_path("R","figures","delta_delta_per_species_abd_gfdl85_scen.png"),
+ggsave(my_path("R","figures","spp_delta_delta_abd_scen_gfdl26.png"),
        plot = last_plot(),
        width = 10,
        height = 8)
@@ -602,6 +610,207 @@ ggsave(my_path("R","figures","delta_delta_per_species_abd_gfdl85_scen.png"),
   
 ```
 
+
+### Aggregated
+
+```{r}
+
+agg_per_species_abd <- my_path("R","tables","species_abd_gfdl26.csv",read = T) %>% 
+  mutate(scenario = ifelse(scenario == 100,0,scenario)) %>% 
+  group_by(run,variable,year,scenario,esm,ssp) %>% 
+  summarise(
+    total_value = sum(sum,na.rm = T)
+  )
+
+```
+
+#### Difference in abundance 
+
+```{r}
+agg_per_species_abd %>% 
+  filter(run == "mpa") %>% 
+  ggplot() +
+  geom_line(
+    aes(
+      x = as.numeric(year),
+      y = total_value,
+      col = as.character(scenario),
+      # linetype = run
+    )
+  ) +
+  theme_classic()+
+  scale_color_viridis_d("F Scenario") +
+  labs(
+    x = "Year",
+    y = "DBEM relative abundance"
+  ) +
+  theme(
+  text = element_text(size = 20)  # Set base text size
+)
+
+ggsave(my_path("R","figures/aggregated","agg_abd_gfdl26.png"),
+       plot = last_plot(),
+       width = 10,
+       height = 7)
+```
+
+
+
+```{r diffabdscenarios_totals, eval = T, fig.width=20, fig.height=15, message=F, warning = F}
+
+# Raw data
+
+  agg_per_species_abd %>% 
+  filter(run == "mpa") %>% 
+  spread(scenario,total_value) %>% 
+  mutate(
+    d_25 = my_chng(`0`,`25`,limit = 100),
+    d_50 = my_chng(`0`,`50`,limit = 100),
+    d_75 = my_chng(`0`,`75`,limit = 100)
+  ) %>% 
+  gather("delta","delta_value",d_25:d_75) %>% 
+  group_by(esm,ssp,delta) %>%
+  # arrange(year)
+  mutate(
+    run_avg = rollmean(delta_value, k = 10, align = "right", fill = NA)
+  ) %>% 
+  # View()
+  ggplot() +
+  geom_line(
+    aes(
+      x = as.numeric(year),
+      y = delta_value,
+      color = as.character(delta)
+    )
+  ) +
+  # geom_line(
+  #   aes(
+  #     x = as.numeric(year),
+  #     y = run_avg,
+  #     group = taxon_key,
+  #     color = as.character(delta)
+  #   )
+  # ) +
+  scale_color_viridis_d("F Scenario") +
+  labs(
+    x = "Year",
+    y = "Percentage change relative to F0 scenario"
+  ) +
+  theme_classic()+
+  theme(
+  text = element_text(size = 20)  # Set base text size
+  )
+
+
+ggsave(my_path("R","figures/aggregated/","agg_abd_scen_diff_gfdl26.png"),
+       plot = last_plot(),
+       width = 10,
+       height = 7)
+
+
+```
+
+#### Relative difference
+
+```{r relative_abd_tbl_agg, eval = T, fig.width=8, fig.height=7, message=F,warning=F}
+# Raw data
+abd_relative_df <- agg_per_species_abd %>% 
+  mutate(
+    time_frame = ifelse(year > 1995 & year < 2014, "historic",
+                        ifelse(year > 2041 & year < 2060, "early_2050",
+                               ifelse(year > 2081 & year < 2100, "end_2100",NA)
+                        )
+    )
+  ) %>% 
+  filter(!is.na(time_frame)) %>% 
+  group_by(run,time_frame, esm,ssp,scenario) %>%
+  summarise(nat_mean_sum = round(mean(total_value,na.rm = T))) %>% 
+  group_by(esm,ssp,scenario) %>% 
+  spread(time_frame,nat_mean_sum) %>% 
+  mutate(early_2050 = my_chng(`historic`,`early_2050`,limit = 100),
+         end_2100 = my_chng(`historic`,`end_2100`,limit = 100)
+  )
+
+
+print(abd_relative_df %>% select(1:3,historic,everything()) %>% filter(common_name == "Capelin"))
+
+```
+
+```{r}
+
+abd_relative_df %>% 
+  gather("time_frame","percentage_difference",early_2050:end_2100) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = time_frame,
+      y = percentage_difference,
+      fill = as.character(scenario)
+    ),
+    stat = "identity",
+    position = "dodge"
+  ) +
+  scale_fill_viridis_d("F scenario") +
+  # coord_flip() +
+  labs(x = "Common name",
+       y = "Percentage change relative to historical values") +
+  theme_classic() +
+  theme(
+    text = element_text(size = 16)  # Set base text size
+  ) 
+
+
+ggsave(my_path("R","figures/aggregated","agg_abd_time_diff_gfdl26.png"),
+       plot = last_plot(),
+       width = 10,
+       height = 8)
+
+
+```
+
+##### Relative to the 100 scenario (Delta delta)
+
+```{r relative_abd_fig_total, eval = T, fig.width=8, fig.height=7, message=F,warning=F}
+
+abd_relative_df %>% 
+  filter(run == "mpa") %>% 
+  select(-historic) %>% 
+  gather("time_frame","percentage_difference",early_2050:end_2100) %>% 
+  spread(scenario,percentage_difference) %>% 
+  mutate(
+    d_25 = my_chng(`0`,`25`),
+    d_50 = my_chng(`0`,`50`),
+    d_75 = my_chng(`0`,`75`)
+  ) %>% 
+  gather("delta","delta_value",d_25:d_75) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = delta,
+      y = delta_value,
+      fill = as.character(delta)
+    ),
+    stat = "identity",
+    position = "dodge"
+  ) +
+  scale_fill_viridis_d("F scenario") +
+  coord_flip() +
+  labs(x = "Scenario",
+       y = "Difference in climate change impacts between F scenarios\nrelative to 100% protection (%)") +
+  theme_classic() +
+  theme(
+    text = element_text(size = 16)  # Set base text size
+  ) +
+  facet_wrap(~time_frame)
+
+ggsave(my_path("R","figures/aggregated","agg_delta_delta_abd_scen_gfdl26.png"),
+       plot = last_plot(),
+       width = 8,
+       height = 4)
+
+
+  
+```
 
 
 ### Maximum Catch Potential
@@ -963,6 +1172,13 @@ grid_per_species_abd <- agg_per_spp_abd(dbem_paths, grid = T)
 write_csv(grid_per_species_abd, my_path("R","tables","grid_per_species_abd.csv"))
 
 head(grid_per_species_abd)
+
+
+grid_per_species_abd_scen <- bind_rows(
+  lapply(scenarios, agg_all_scen, ssp = 26, grid = T)
+  
+)
+
 ```
 
 #### Total abundance per grid cell status
@@ -1207,203 +1423,3 @@ for(i in 1:5){
 ```
 
 
-#Aggregated
-
-```{r}
-
-agg_per_species_abd <- my_path("R","tables","agg_per_species_abd_gfdl85.csv",read = T) %>% 
-  mutate(scenario = ifelse(scenario == 100,0,scenario)) %>% 
-  group_by(run,variable,year,scenario,esm,ssp) %>% 
-  summarise(
-    total_value = sum(sum,na.rm = T)
-  )
-
-```
-
-#### Difference in abundance 
-
-```{r}
-agg_per_species_abd %>% 
-  filter(run == "mpa") %>% 
-  ggplot() +
-  geom_line(
-    aes(
-      x = as.numeric(year),
-      y = total_value,
-      col = as.character(scenario),
-      # linetype = run
-    )
-  ) +
-  theme_classic()+
-  scale_color_viridis_d("F Scenario") +
-  labs(
-    x = "Year",
-    y = "DBEM relative abundance"
-  ) +
-  theme(
-  text = element_text(size = 20)  # Set base text size
-)
-
-ggsave(my_path("R","figures/totals","agg_total_abd_gfdl85.png"),
-       plot = last_plot(),
-       width = 10,
-       height = 7)
-```
-
-
-
-```{r diffabdscenarios_totals, eval = T, fig.width=20, fig.height=15, message=F, warning = F}
-
-# Raw data
-
-  agg_per_species_abd %>% 
-  filter(run == "mpa") %>% 
-  spread(scenario,total_value) %>% 
-  mutate(
-    d_25 = my_chng(`0`,`25`,limit = 100),
-    d_50 = my_chng(`0`,`50`,limit = 100),
-    d_75 = my_chng(`0`,`75`,limit = 100)
-  ) %>% 
-  gather("delta","delta_value",d_25:d_75) %>% 
-  group_by(esm,ssp,delta) %>%
-  # arrange(year)
-  mutate(
-    run_avg = rollmean(delta_value, k = 10, align = "right", fill = NA)
-  ) %>% 
-  # View()
-  ggplot() +
-  geom_line(
-    aes(
-      x = as.numeric(year),
-      y = delta_value,
-      color = as.character(delta)
-    )
-  ) +
-  # geom_line(
-  #   aes(
-  #     x = as.numeric(year),
-  #     y = run_avg,
-  #     group = taxon_key,
-  #     color = as.character(delta)
-  #   )
-  # ) +
-  scale_color_viridis_d("F Scenario") +
-  labs(
-    x = "Year",
-    y = "Percentage change relative to F0 scenario"
-  ) +
-  theme_classic()+
-  theme(
-  text = element_text(size = 20)  # Set base text size
-  )
-
-
-ggsave(my_path("R","figures/totals/","scen_abs_diff_total_abd_gfdl85.png"),
-       plot = last_plot(),
-       width = 10,
-       height = 7)
-
-
-```
-
-#### Relative difference
-
-```{r relative_abd_tbl, eval = T, fig.width=8, fig.height=7, message=F,warning=F}
-# Raw data
-abd_relative_df <- agg_per_species_abd %>% 
-  mutate(
-    time_frame = ifelse(year > 1995 & year < 2014, "historic",
-                        ifelse(year > 2041 & year < 2060, "early_2050",
-                               ifelse(year > 2081 & year < 2100, "end_2100",NA)
-                        )
-    )
-  ) %>% 
-  filter(!is.na(time_frame)) %>% 
-  group_by(run,time_frame, esm,ssp,scenario) %>%
-  summarise(nat_mean_sum = round(mean(total_value,na.rm = T))) %>% 
-  group_by(esm,ssp,scenario) %>% 
-  spread(time_frame,nat_mean_sum) %>% 
-  mutate(early_2050 = my_chng(`historic`,`early_2050`,limit = 100),
-         end_2100 = my_chng(`historic`,`end_2100`,limit = 100)
-  )
-
-
-print(abd_relative_df %>% select(1:3,historic,everything()) %>% filter(common_name == "Capelin"))
-
-```
-
-```{r}
-
-abd_relative_df %>% 
-  gather("time_frame","percentage_difference",early_2050:end_2100) %>% 
-  ggplot() +
-  geom_bar(
-    aes(
-      x = time_frame,
-      y = percentage_difference,
-      fill = as.character(scenario)
-    ),
-    stat = "identity",
-    position = "dodge"
-  ) +
-  scale_fill_viridis_d("F scenario") +
-  # coord_flip() +
-  labs(x = "Common name",
-       y = "Percentage change relative to historical values") +
-  theme_classic() +
-  theme(
-    text = element_text(size = 16)  # Set base text size
-  ) 
-
-
-ggsave(my_path("R","figures/totals","time_diff_agg_abd_gfdl85_scen.png"),
-       plot = last_plot(),
-       width = 10,
-       height = 8)
-
-
-```
-
-##### Relative to the 100 scenario (Delta delta)
-
-```{r relative_abd_fig_total, eval = T, fig.width=8, fig.height=7, message=F,warning=F}
-
-abd_relative_df %>% 
-  filter(run == "mpa") %>% 
-  select(-historic) %>% 
-  gather("time_frame","percentage_difference",early_2050:end_2100) %>% 
-  spread(scenario,percentage_difference) %>% 
-  mutate(
-    d_25 = my_chng(`0`,`25`),
-    d_50 = my_chng(`0`,`50`),
-    d_75 = my_chng(`0`,`75`)
-  ) %>% 
-  gather("delta","delta_value",d_25:d_75) %>% 
-  ggplot() +
-  geom_bar(
-    aes(
-      x = delta,
-      y = delta_value,
-      fill = as.character(delta)
-    ),
-    stat = "identity",
-    position = "dodge"
-  ) +
-  scale_fill_viridis_d("F scenario") +
-  coord_flip() +
-  labs(x = "Scenario",
-       y = "Difference in climate change impacts between F scenarios\nrelative to 100% protection (%)") +
-  theme_classic() +
-  theme(
-    text = element_text(size = 16)  # Set base text size
-  ) +
-  facet_wrap(~time_frame)
-
-ggsave(my_path("R","figures/totals","delta_delta_total_abd_gfdl85_scen.png"),
-       plot = last_plot(),
-       width = 8,
-       height = 4)
-
-
-  
-```

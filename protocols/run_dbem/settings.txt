@@ -1,10 +1,10 @@
- SppNo           7
+ SppNo            7
  CCSc C6GFDL26                                
  SSP SSP126                                  
  rsfile CpawSppList         
- rpath c6gfdl85f1cpaws10          
+ rpath c6gfdl85f1cpaws25             
  tpath TaxonDataC0                   
- ifile 11                  
+ ifile 12                  
  FHS    1.00
  FEEZ    1.00
- MPApath cpaws_100                                  
+ MPApath cpaws_25                                

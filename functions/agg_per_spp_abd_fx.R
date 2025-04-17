@@ -31,14 +31,14 @@ agg_per_spp_abd <- function(dbem_paths, grid = F){
       
     # Load no-MPA run
     load(dbem_paths$dbem_no_mpa_path[i])
-    no_mpa_data <- as.data.frame(sppabdfnl) %>% 
-      rowid_to_column("index") %>% 
+    no_mpa_data <- as.data.frame(sppabdfnl) %>%
+      rowid_to_column("index") %>%
       filter(index %in% bc_grid)
-    
+
     colnames(no_mpa_data) <- c("index",seq(1951,2100,1))
     rm(sppabdfnl)
-    
-    no_mpa_data <- no_mpa_data %>% 
+
+    no_mpa_data <- no_mpa_data %>%
       mutate(run = "no_mpa",
              variable = variable,
              esm=esm,
@@ -49,7 +49,7 @@ agg_per_spp_abd <- function(dbem_paths, grid = F){
     # combine both data
     if(grid == T){
       partial_grids <-  mpa_data %>% 
-        bind_rows(no_mpa_data) %>% 
+        bind_rows(no_mpa_data) %>%
         gather("year","value",`1951`:`2100`) %>% 
         mutate(
           time_frame = ifelse(year > 1995 & year < 2014, "historic",
@@ -71,7 +71,7 @@ agg_per_spp_abd <- function(dbem_paths, grid = F){
     }else{
       
       partial_grids <- mpa_data %>% 
-        bind_rows(no_mpa_data) %>% 
+        bind_rows(no_mpa_data) %>%
         gather("year","value",`1951`:`2100`) %>% 
         group_by(run,variable,year, scenario, esm, ssp) %>% 
         summarise(

@@ -1,0 +1,22 @@
+extracting data
+SST complete
+bot_temp complete
+AdvectionU complete
+AdvectionV complete
+htotal_btm complete
+htotal_surf complete
+O2_btm complete
+O2_surf complete
+Salinity_btm complete
+Salinity_surf complete
+totalphy2 complete
+IceExt complete
+Current working directory is /project/6006523/jepa/cpaws_bc/protocols/run_dbem
+Starting run at:Thu 17 Apr 2025 09:35:27 AM PDT
+“Starting task: 10”
+ Read filenumber:    11
+ Species list:    11
+ CpawSppList11.txt   
+ Initializing, loading files...
+           7
+Program ADRDisp finished with exit code 24 at: Thu 17 Apr 2025 09:37:16 AM PDT

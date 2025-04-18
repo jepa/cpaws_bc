@@ -45,7 +45,7 @@ This script analyzes 4 scenarios developed for the CPAWS projec on climate chang
 #   filter(!is.na(taxon_key)) # remove species not modeled
 
 
-ran_taxa <- list.files("/Volumes/Enterprise/Data/cpaws_bc/Data/dbem_runs/txt/c6gfdl85f1cpaws25/")
+ran_taxa <- list.files("/Volumes/Enterprise/Data/cpaws_bc/Data/dbem_runs/txt/c6gfdl26f1cpaws25/")
 
 taxon_list <- my_data("dbem_species") %>% 
   filter(taxon_key %in% ran_taxa)
@@ -276,7 +276,7 @@ variable = "Abd"
 scenarios <- c(25,50,75,10)
 
 agg_per_species_abd_scen <- bind_rows(
-  lapply(scenarios, agg_all_scen, ssp = 85, grid = F)
+  lapply(scenarios, agg_all_scen, ssp = 26, grid = F)
   
 )
 
@@ -287,7 +287,7 @@ unique(agg_per_species_abd_scen$variable)
 unique(agg_per_species_abd_scen$run)
 length(unique(agg_per_species_abd_scen$taxon_key))
 
-write_csv(agg_per_species_abd_scen, my_path("R","tables","species_abd_gfdl85.csv"))
+write_csv(agg_per_species_abd_scen, my_path("R","tables","species_abd_gfdl26.csv"))
 
 ```
 
@@ -298,7 +298,7 @@ Figure showing the total abundance (raw DBEM outputs) per species over the years
 ```{r total_abd, eval = T, fig.width=20, fig.height=15, message=F,warning=F}
 
 # read data
-agg_per_species_abd <- my_path("R","tables","species_abd_gfdl85.csv",read = T) %>% 
+agg_per_species_abd <- my_path("R","tables","species_abd_gfdl26.csv",read = T) %>% 
   mutate(scenario = ifelse(scenario == 100,0,scenario)) %>% 
   left_join(taxon_list,
             by = ("taxon_key")
@@ -324,7 +324,7 @@ plot_agg_per_species_abd <- agg_per_species_abd %>%
   text = element_text(size = 20)  # Set base text size
 )
 
-ggsave(my_path("R","figures","spp_abd_gfdl85.png"),
+ggsave(my_path("R","figures","spp_abd_gfdl26.png"),
        plot = plot_agg_per_species_abd,
        width = 20,
        height = 15)
@@ -437,7 +437,7 @@ diff_plot <-
   facet_wrap(~common_name, scales = "free")
 
 
-ggsave(my_path("R","figures","spp_abs_diff_scen_gfdl85.png"),
+ggsave(my_path("R","figures","spp_abs_diff_scen_gfdl26.png"),
        plot = diff_plot,
        width = 20,
        height = 15)
@@ -483,7 +483,7 @@ abd_relative_df <- agg_per_species_abd %>%
   )
 
 
-print(abd_relative_df %>% select(1:3,historic,everything()) %>% filter(common_name == "Capelin"))
+# print(abd_relative_df %>% select(1:3,historic,everything()) %>% filter(common_name == "Capelin"))
 
 ```
 
@@ -513,7 +513,7 @@ abd_relative_df %>%
   facet_wrap(~time_frame)
 
 
-ggsave(my_path("R","figures","spp_time_diff_abd_gfdl85_scen.png"),
+ggsave(my_path("R","figures","spp_time_diff_abd_gfdl26_scen.png"),
        plot = last_plot(),
        width = 10,
        height = 8)
@@ -607,7 +607,7 @@ delta_delta_scen %>%
   ) +
   facet_wrap(~time_frame)
 
-ggsave(my_path("R","figures","spp_delta_delta_abd_scen_gfdl85.png"),
+ggsave(my_path("R","figures","spp_delta_delta_abd_scen_gfdl26.png"),
        plot = last_plot(),
        width = 10,
        height = 8)
@@ -621,7 +621,7 @@ ggsave(my_path("R","figures","spp_delta_delta_abd_scen_gfdl85.png"),
 
 ```{r}
 
-agg_per_species_abd <- my_path("R","tables","species_abd_gfdl85.csv",read = T) %>% 
+agg_per_species_abd <- my_path("R","tables","species_abd_gfdl26.csv",read = T) %>% 
   mutate(scenario = ifelse(scenario == 100,0,scenario)) %>% 
   group_by(run,variable,year,scenario,esm,ssp) %>% 
   summarise(
@@ -654,7 +654,7 @@ agg_per_species_abd %>%
   text = element_text(size = 20)  # Set base text size
 )
 
-ggsave(my_path("R","figures/aggregated","agg_abd_gfdl85.png"),
+ggsave(my_path("R","figures/aggregated","agg_abd_gfdl26.png"),
        plot = last_plot(),
        width = 10,
        height = 7)
@@ -708,7 +708,7 @@ ggsave(my_path("R","figures/aggregated","agg_abd_gfdl85.png"),
   )
 
 
-ggsave(my_path("R","figures/aggregated/","agg_abd_scen_diff_gfdl85b.png"),
+ggsave(my_path("R","figures/aggregated/","agg_abd_scen_diff_gfdl26.png"),
        plot = last_plot(),
        width = 10,
        height = 7)
@@ -767,7 +767,7 @@ abd_relative_df %>%
   ) 
 
 
-ggsave(my_path("R","figures/aggregated","agg_abd_time_diff_gfdl85.png"),
+ggsave(my_path("R","figures/aggregated","agg_abd_time_diff_gfdl26.png"),
        plot = last_plot(),
        width = 10,
        height = 8)
@@ -811,7 +811,7 @@ abd_relative_df %>%
   ) +
   facet_wrap(~time_frame)
 
-ggsave(my_path("R","figures/aggregated","agg_delta_delta_abd_scen_gfdl85.png"),
+ggsave(my_path("R","figures/aggregated","agg_delta_delta_abd_scen_gfdl26.png"),
        plot = last_plot(),
        width = 8,
        height = 4)

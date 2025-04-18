@@ -39,18 +39,26 @@ This script analyzes 4 scenarios developed for the CPAWS projec on climate chang
 ```{r load_data, eval = T}
 
 # Get modelled species DF
-taxon_list <- my_path("D","Species",name ="nsb_updated_species.csv", read = T) %>% 
-  select(taxon_name = scientific_name) %>% 
-  left_join(my_data("dbem_species")) %>% 
-  filter(!is.na(taxon_key)) # remove species not modeled
+# taxon_list <- my_path("D","Species",name ="nsb_updated_species.csv", read = T) %>% 
+#   select(taxon_name = scientific_name) %>% 
+#   left_join(my_data("dbem_species")) %>% 
+#   filter(!is.na(taxon_key)) # remove species not modeled
+
+
+ran_taxa <- list.files("/Volumes/Enterprise/Data/cpaws_bc/Data/dbem_runs/txt/c6gfdl85f1cpaws25/")
+
+taxon_list <- my_data("dbem_species") %>% 
+  filter(taxon_key %in% ran_taxa)
+  
+  
 
 # manually include herring nor dungeness crab
 dbem_species <- my_data("dbem_species") %>% 
   filter(taxon_key %in% c(690115,601520))
 
-
-taxon_list <- taxon_list %>% 
-  bind_rows(dbem_species)
+# 
+# taxon_list <- taxon_list %>% 
+#   bind_rows(dbem_species)
 
 
 # Get MPA sf
@@ -237,12 +245,6 @@ Overall, it is expected that the MPA runs will have more abundance as fishing is
 
 ```{r abd_summary, eval = F}
 
-ran_taxa <- list.files("/Volumes/Enterprise/Data/cpaws_bc/Data/dbem_runs/txt/c6gfdl85f1cpaws25/")
-
-variable = "Abd"
-
-# For MPA runs
-scenarios <- c(25,50,75,10)
 
 
 agg_all_scen <- function(scenario,ssp,grid){
@@ -266,8 +268,15 @@ agg_all_scen <- function(scenario,ssp,grid){
   
 }
 
+
+
+variable = "Abd"
+
+# For MPA runs
+scenarios <- c(25,50,75,10)
+
 agg_per_species_abd_scen <- bind_rows(
-  lapply(scenarios, agg_all_scen, ssp = 26)
+  lapply(scenarios, agg_all_scen, ssp = 85, grid = F)
   
 )
 
@@ -276,8 +285,9 @@ unique(agg_per_species_abd_scen$scenario)
 unique(agg_per_species_abd_scen$ssp)
 unique(agg_per_species_abd_scen$variable)
 unique(agg_per_species_abd_scen$run)
+length(unique(agg_per_species_abd_scen$taxon_key))
 
-write_csv(agg_per_species_abd_scen, my_path("R","tables","species_abd_gfdl26.csv"))
+write_csv(agg_per_species_abd_scen, my_path("R","tables","species_abd_gfdl85.csv"))
 
 ```
 
@@ -288,14 +298,15 @@ Figure showing the total abundance (raw DBEM outputs) per species over the years
 ```{r total_abd, eval = T, fig.width=20, fig.height=15, message=F,warning=F}
 
 # read data
-agg_per_species_abd <- my_path("R","tables","species_abd_gfdl26.csv",read = T) %>% 
+agg_per_species_abd <- my_path("R","tables","species_abd_gfdl85.csv",read = T) %>% 
   mutate(scenario = ifelse(scenario == 100,0,scenario)) %>% 
   left_join(taxon_list,
             by = ("taxon_key")
-            )
+            ) %>% 
+  filter(taxon_key != 600309) #greenland cod not working
 
 # Raw data
-plot_agg_per_species_abd <- agg_per_species_abd_scen %>% 
+plot_agg_per_species_abd <- agg_per_species_abd %>% 
   left_join(taxon_list) %>% 
   filter(run == "mpa") %>% 
   ggplot() +
@@ -303,7 +314,7 @@ plot_agg_per_species_abd <- agg_per_species_abd_scen %>%
     aes(
       x = as.numeric(year),
       y = sum,
-      col = scenario#,
+      col = as.character(scenario)
       # linetype = run
     )
   ) +
@@ -313,13 +324,13 @@ plot_agg_per_species_abd <- agg_per_species_abd_scen %>%
   text = element_text(size = 20)  # Set base text size
 )
 
-ggsave(my_path("R","figures","spp_abd_gfdl26.png"),
+ggsave(my_path("R","figures","spp_abd_gfdl85.png"),
        plot = plot_agg_per_species_abd,
        width = 20,
        height = 15)
 
 
-print(plot_agg_per_species_abd)
+# print(plot_agg_per_species_abd)
 ```
 
 #### Difference in abundance 
@@ -393,18 +404,21 @@ print(diff_plot)
 diff_plot <-
   agg_per_species_abd %>% 
   filter(run == "mpa") %>% 
-  left_join(taxon_list) %>% 
-  select(-variable,-mean) %>% 
-  spread(scenario,sum) %>% 
+  dplyr::select(-variable,-mean) %>%
+  # dplyr::select(year,scenario,taxon_key,sum) %>% 
+  # View()
+  pivot_wider(names_from = scenario, values_from = sum) %>% 
   mutate(
-    d_25 = my_chng(`0`,`25`,limit = 100),
-    d_50 = my_chng(`0`,`50`,limit = 100),
-    d_75 = my_chng(`0`,`75`,limit = 100)
+    d_25 = my_chng(`0`,`25`),
+    d_50 = my_chng(`0`,`50`),
+    d_75 = my_chng(`0`,`75`)
   ) %>% 
   gather("delta","delta_value",d_25:d_75) %>% 
   group_by(taxon_key,common_name,esm,ssp,delta) %>%
   # arrange(year)
   mutate(
+    delta_value = ifelse(delta_value > 100,100,
+                         ifelse(delta_value < -100,-100,delta_value)),
     run_avg = rollmean(delta_value, k = 10, align = "right", fill = NA)
   ) %>% 
   # View()
@@ -416,14 +430,6 @@ diff_plot <-
       color = as.character(delta)
     )
   ) +
-  # geom_line(
-  #   aes(
-  #     x = as.numeric(year),
-  #     y = run_avg,
-  #     group = taxon_key,
-  #     color = as.character(delta)
-  #   )
-  # ) +
   theme_classic()+
   theme(
   text = element_text(size = 20)  # Set base text size
@@ -431,12 +437,12 @@ diff_plot <-
   facet_wrap(~common_name, scales = "free")
 
 
-ggsave(my_path("R","figures","scen_abs_diff_per_species_abd_gfdl26.png"),
+ggsave(my_path("R","figures","spp_abs_diff_scen_gfdl85.png"),
        plot = diff_plot,
        width = 20,
        height = 15)
 
-print(diff_plot)
+
 ```
 
 
@@ -457,6 +463,7 @@ Here, the difference (`diff_early`) represents the difference in percentage chan
 
 ```{r relative_abd_tbl, eval = T, fig.width=8, fig.height=7, message=F,warning=F}
 # Raw data
+
 abd_relative_df <- agg_per_species_abd %>% 
   select(-variable,-mean) %>% 
   mutate(
@@ -564,7 +571,6 @@ print(rel_diff)
 delta_delta_scen <-
   abd_relative_df %>% 
   filter(run == "mpa") %>% 
-  left_join(taxon_list) %>% 
   select(-historic) %>% 
   gather("time_frame","percentage_difference",early_2050:end_2100) %>% 
   spread(scenario,percentage_difference) %>% 
@@ -601,7 +607,7 @@ delta_delta_scen %>%
   ) +
   facet_wrap(~time_frame)
 
-ggsave(my_path("R","figures","spp_delta_delta_abd_scen_gfdl26.png"),
+ggsave(my_path("R","figures","spp_delta_delta_abd_scen_gfdl85.png"),
        plot = last_plot(),
        width = 10,
        height = 8)
@@ -615,7 +621,7 @@ ggsave(my_path("R","figures","spp_delta_delta_abd_scen_gfdl26.png"),
 
 ```{r}
 
-agg_per_species_abd <- my_path("R","tables","species_abd_gfdl26.csv",read = T) %>% 
+agg_per_species_abd <- my_path("R","tables","species_abd_gfdl85.csv",read = T) %>% 
   mutate(scenario = ifelse(scenario == 100,0,scenario)) %>% 
   group_by(run,variable,year,scenario,esm,ssp) %>% 
   summarise(
@@ -648,7 +654,7 @@ agg_per_species_abd %>%
   text = element_text(size = 20)  # Set base text size
 )
 
-ggsave(my_path("R","figures/aggregated","agg_abd_gfdl26.png"),
+ggsave(my_path("R","figures/aggregated","agg_abd_gfdl85.png"),
        plot = last_plot(),
        width = 10,
        height = 7)
@@ -702,7 +708,7 @@ ggsave(my_path("R","figures/aggregated","agg_abd_gfdl26.png"),
   )
 
 
-ggsave(my_path("R","figures/aggregated/","agg_abd_scen_diff_gfdl26.png"),
+ggsave(my_path("R","figures/aggregated/","agg_abd_scen_diff_gfdl85b.png"),
        plot = last_plot(),
        width = 10,
        height = 7)
@@ -714,6 +720,7 @@ ggsave(my_path("R","figures/aggregated/","agg_abd_scen_diff_gfdl26.png"),
 
 ```{r relative_abd_tbl_agg, eval = T, fig.width=8, fig.height=7, message=F,warning=F}
 # Raw data
+
 abd_relative_df <- agg_per_species_abd %>% 
   mutate(
     time_frame = ifelse(year > 1995 & year < 2014, "historic",
@@ -760,7 +767,7 @@ abd_relative_df %>%
   ) 
 
 
-ggsave(my_path("R","figures/aggregated","agg_abd_time_diff_gfdl26.png"),
+ggsave(my_path("R","figures/aggregated","agg_abd_time_diff_gfdl85.png"),
        plot = last_plot(),
        width = 10,
        height = 8)
@@ -783,6 +790,7 @@ abd_relative_df %>%
     d_75 = my_chng(`0`,`75`)
   ) %>% 
   gather("delta","delta_value",d_25:d_75) %>% 
+  # View()
   ggplot() +
   geom_bar(
     aes(
@@ -803,7 +811,7 @@ abd_relative_df %>%
   ) +
   facet_wrap(~time_frame)
 
-ggsave(my_path("R","figures/aggregated","agg_delta_delta_abd_scen_gfdl26.png"),
+ggsave(my_path("R","figures/aggregated","agg_delta_delta_abd_scen_gfdl85.png"),
        plot = last_plot(),
        width = 8,
        height = 4)

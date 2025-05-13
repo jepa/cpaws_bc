@@ -23,7 +23,7 @@ year_one <- 1851
 year_end <- 2100
 
 # Scenario to call (Note this will determine the results directory)
-scenarios <- c("c6gfdl26f1cpaws10","c6gfdl26f1cpaws25","c6gfdl26f1cpaws75","c6gfdl26f1cpaws50")
+scenarios <- c("c6gfdl85f1cpawsnompa","c6gfdl26f1cpawsnompa")
 
 # Variables to be converted (Abundace or Catch)
 category <- c("Catch","Abd")
